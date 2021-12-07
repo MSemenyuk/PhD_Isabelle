@@ -23,14 +23,12 @@ definition "something  \<equiv> F \<notin> rcu_addrs"
 record mstate =
   pc :: "T \<Rightarrow> PC"
   r :: "T \<Rightarrow> nat \<Rightarrow> nat"        (*local copy of rcu*)
-  v :: "T \<Rightarrow> V"
-  n :: "T \<Rightarrow> id option"
-  n_val :: "T \<Rightarrow> nat option"
-  s :: "T \<Rightarrow> id option"
-  s_val :: "T \<Rightarrow> nat option"
-  C_val :: "T \<Rightarrow> nat option"
-  (*old :: "T \<Rightarrow> id"          object to which s is pointing, as seen by thread T*)
-  (*new :: "T \<Rightarrow> id option"          object to which n is pointing, per thread T*)
+  v :: "T \<Rightarrow> bool"
+  n :: "T \<Rightarrow> bool"        (*now modelled as local pointer allocation - True/False*)
+  s :: "T \<Rightarrow> bool"        (*now modelled as local pointer allocation - True/False*)
+  v_val :: "T \<Rightarrow> nat option"        (*now modelled as local value - so M(&v)*)
+  n_val :: "T \<Rightarrow> nat option"        (*now modelled as local value - so M(&n)*)
+  s_val :: "T \<Rightarrow> nat option"        (*now modelled as local value - so M(&s)*)
   det :: "T \<Rightarrow> L list"   (*detached list*)
   for_ctr :: "T \<Rightarrow> nat"        (* aux *)
   res :: "T \<Rightarrow> nat"           (*return v*)
@@ -48,110 +46,59 @@ record mstate =
 (*---------------- basic functional definitons ----------------------*)
 
 (*int v*)
-definition v_allocation :: "mstate \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> bool" ("_ int\<^sub>v[_] _" [200,200])           \<comment>\<open>int v, note v is a local variable\<close>
+definition v_allocation :: "mstate \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> bool" ("_ int[v\<^sub>_] _" [200,200])           \<comment>\<open>int v, note v is a local variable\<close>
   where                                                                                           \<comment>\<open>  and doesn't need allocation\<close>
-  "v_allocation ms t ms' \<equiv>  ms' =ms \<lparr>v := (v ms) (t := 0),
+  "v_allocation ms t ms' \<equiv>  ms' =ms \<lparr>v := (v ms) (t := True),
+                                 v_val := (v_val ms) (t := None),
                                     pc := (pc ms) (t := I4)\<rparr>"
 (*int *n*)
-definition int_star_n :: "mstate \<Rightarrow> posem \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> bool" ("_ _ int *n\<^sub>_ _ _" [200,200,200,200,200])           \<comment>\<open>int *n\<close>
+definition int_star_n :: "mstate \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> bool" ("_ int[*n\<^sub>_] _" [200,200,200])           \<comment>\<open>int *n\<close>
   where
-  "int_star_n ms ps t ms' ps' \<equiv> \<exists> loc prov . (allocate_object ps loc prov ps' 
-                                                \<and> ms' = ms \<lparr>n := (n ms) (t := Some (prov)),
-                                                           pc := (pc ms) (t := I4) \<rparr>)"
+  "int_star_n ms t ms' \<equiv> ms' = ms \<lparr>n := (n ms) (t := True),
+                               n_val := (n_val ms) (t := None),
+                                  pc := (pc ms) (t := I4)\<rparr>"
 (*int *s*)
-definition int_star_s :: "mstate \<Rightarrow> posem \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> bool" ("_ _ int *s\<^sub>_ _ _" [200,200,200,200,200])           \<comment>\<open>int *s\<close>
+definition int_star_s :: "mstate \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> bool" ("_ int[*s\<^sub>_] _" [200,200,200])           \<comment>\<open>int *s\<close>
   where
-  "int_star_s ms ps t ms' ps' \<equiv> \<exists> loc prov . (allocate_object ps loc prov ps' 
-                                                \<and> ms' = ms \<lparr>s := (s ms) (t := Some (prov)),
-                                                           pc := (pc ms) (t := I4) \<rparr>)"
-
-
-lemma test1:
-  assumes "ms ps int *n\<^sub>t ms' ps'"
-  assumes "n ms' t = Some 2"
-  shows "2 \<notin> dom(A ps)"
-  using assms apply (simp add:int_star_n_def allocate_object_def)
-  apply clarify
-  by(simp add:isfree_addr_def)
-
-lemma test2:
-  assumes "ms ps int *n\<^sub>t ms' ps'"
-  assumes "n ms' t = Some 2"
-  shows "A ps' 2 \<noteq> None"
-  using assms apply (simp add:int_star_n_def allocate_object_def)
-  apply clarify
-  by(simp add:isfree_addr_def)
-
-lemma test3:
-  assumes "ms ps int *n\<^sub>t ms' ps'"
-  assumes "n ms' t = Some 2"
-  shows "(\<exists>x. A ps' 2 =Some x \<and> fst(x) \<notin>alloc_addrs ps)"
-  using assms apply (simp add:int_star_n_def allocate_object_def)
-  apply clarify 
-  by(simp add:isfree_addr_def)
+  "int_star_s ms t ms' \<equiv> ms' = ms \<lparr>s := (s ms) (t := True),
+                               s_val := (s_val ms) (t := None),
+                                  pc := (pc ms) (t := I4) \<rparr>"
 
 
 
 
-(*******   n = new int   split**********CHECK*)
-definition new_int :: "mstate \<Rightarrow> posem \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> bool" ( "_ _ new int\<^sub>_ _ _" [200,200,200,200,200])
+(*******   n = new int  **********)
+definition new_int :: "mstate \<Rightarrow> posem \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> bool" ( "_ _ n:=newint _ _ _" [200,200,200,200,200])
   where
-  "new_int ms ps t ms' ps' \<equiv> \<exists> loc prov . (allocate_object ps loc prov ps' 
+  "new_int ms ps t ms' ps' \<equiv> ps = ps' \<and>(\<exists> loc prov . (allocate_object ps loc prov ps' 
                                                 \<and> ms' = ms \<lparr>n_val := (n_val ms) (t := Some (loc)),
-                                                           pc := (pc ms) (t := I4) \<rparr>)"
-definition point_n_to_newint :: "mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ _ n\<^sub>_ = &newint _ _ _ " [200,200,200,200,200,200,200])
-  where   \<comment>\<open> global point n to newint\<close>
-  "point_n_to_newint ms ps \<sigma> t ms' ps' \<sigma>' \<equiv> (\<exists>x y.  A ps y = Some x
-                                                        \<and> n ms t = Some (fst(x))
-                                                        \<and> n_val ms t = Some y
-                                      \<and> \<sigma> [fst(x) := y]\<^sub>t \<sigma>'
-                                      \<and>  ms' = ms \<lparr> pc := (pc ms) (t := I4)\<rparr>)"
+                                                               pc := (pc ms) (t := I4) \<rparr>))"
 
-(*******   s = C   split**********)
-definition get_C_val :: "mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ _ _ loadsfrom &C   _ _ _" [200,200,200,200,200,200,200])
-  where
-  "get_C_val ms ps \<sigma> t ms' ps' \<sigma>' \<equiv> (\<exists>x y z.  (fst(y) = C) \<and> A ps x = Some y 
-                                      \<and> \<sigma> [z \<leftarrow> fst(y)]\<^sub>t \<sigma>'
-                                      \<and> ms' = ms \<lparr> C_val := (C_val ms) (t := Some z),
-                                                      pc := (pc ms) (t := I4)\<rparr>)"  
-definition change_what_s_points_to :: "mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ _ writeto &s\<^sub>_  _ _ _" [200,200,200,200,200,200,200])
-  where
-  "change_what_s_points_to ms ps \<sigma> t ms' ps' \<sigma>' \<equiv> (\<exists>x y z.  (s ms t = Some x) 
-                                                          \<and> A ps x = Some y 
-                                                          \<and> C_val ms t = Some z
-                                      \<and> \<sigma> [fst(y) := z]\<^sub>t \<sigma>'
-                                      \<and> ms' = ms \<lparr>pc := (pc ms) (t := I4)\<rparr>)" 
 
-(*******   v=*s   split**********)
-definition get_s_val :: "mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ _ loadfrom &s\<^sub>_  _ _ _" [200,200,200,200,200,200,200])
+(*******   s = C   **********)
+definition get_C_val :: "mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ _ s:=C _ _ _ _" [200,200,200,200,200,200,200])
   where
-  "get_s_val ms ps \<sigma> t ms' ps' \<sigma>' \<equiv> (\<exists>x y z.  (s ms t = Some x) \<and> A ps x = Some y 
+  "get_C_val ms ps \<sigma> t ms' ps' \<sigma>' \<equiv> ps = ps' \<and> (\<exists>x y z.  (fst(y) = C) \<and> A ps x = Some y 
                                       \<and> \<sigma> [z \<leftarrow> fst(y)]\<^sub>t \<sigma>'
                                       \<and> ms' = ms \<lparr> s_val := (s_val ms) (t := Some z),
                                                       pc := (pc ms) (t := I4)\<rparr>)" 
-definition update_v :: "mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> T \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ _ v\<^sub>_:=*s\<^sub>_ _ _ _ " [200,200,200,200,200,200,200,200])
-  where   \<comment>\<open> global read of *s\<close>
-  "update_v ms ps \<sigma> t t' ms' ps' \<sigma>' \<equiv> t = t' \<and> (\<exists>x y z.  A ps y = Some x
-                                                        \<and> s_val ms t = Some (fst(x))
-                                      \<and> \<sigma> [z \<leftarrow> fst(x)]\<^sub>t \<sigma>'
-                                      \<and>  ms' = ms \<lparr> v := (v ms) (t := z),
-                                                    pc := (pc ms) (t := I4)\<rparr>)"
 
-
-
-(*******   *n = v+1   split**********)
-definition get_n_val :: "mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ _ loadfrom &n\<^sub>_  _ _ _" [200,200,200,200,200,200,200])
+(*******   v=*s   **********)
+definition get_s_val :: "mstate \<Rightarrow> surrey_state \<Rightarrow> T  \<Rightarrow> mstate \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ v:=*s _ _ _" [200,200,200,200,200])
   where
-  "get_n_val ms ps \<sigma> t ms' ps' \<sigma>' \<equiv> (\<exists>x y z.  (n ms t = Some x) \<and> A ps x = Some y 
-                                      \<and> \<sigma> [z \<leftarrow> fst(y)]\<^sub>t \<sigma>'
-                                      \<and> ms' = ms \<lparr> n_val := (n_val ms) (t := Some z),
-                                                      pc := (pc ms) (t := I4)\<rparr>)"  
-definition writeto_star_n :: "mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ _ writeto *n\<^sub>_ newv _ _ _" [200,200,200,200,200,200,200])
+  "get_s_val ms \<sigma> t ms' \<sigma>' \<equiv>  (\<exists>x z.  (s_val ms t = Some x)
+                                      \<and> \<sigma> [z \<leftarrow> x]\<^sub>t \<sigma>'
+                                      \<and> ms' = ms \<lparr> v_val := (v_val ms) (t := Some z),
+                                                      pc := (pc ms) (t := I4)\<rparr>)" 
+
+
+(*******   *n = v+1   **********) 
+definition writeto_star_n :: "mstate \<Rightarrow> surrey_state \<Rightarrow> T  \<Rightarrow> mstate \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ *n:=newv _ _ _" [200,200,200,200,200])
   where
-  "writeto_star_n ms ps \<sigma> t ms' ps' \<sigma>' \<equiv> (\<exists>x y.  A ps x = Some y 
-                                                           \<and> n_val ms t = Some (fst(y))
-                                      \<and> \<sigma> [fst(y) := (v ms t + 1)]\<^sub>t \<sigma>'
-                                      \<and>  ms' = ms \<lparr>pc := (pc ms) (t := I4)\<rparr>)"   
+  "writeto_star_n ms \<sigma> t ms' \<sigma>' \<equiv>  (\<exists>x y.   n_val ms t = Some (y)
+                                                   \<and> v_val ms t = Some (x)
+                                          \<and> \<sigma> [y := (x + 1)]\<^sub>t \<sigma>'
+                                          \<and>  ms' = ms \<lparr>pc := (pc ms) (t := I4)\<rparr>)"   
 
 
 
@@ -159,8 +106,8 @@ definition writeto_star_n :: "mstate \<Rightarrow> posem \<Rightarrow> surrey_st
 
 
 
-(********* free(pop(detached))    idea******************)
-definition pop_address :: "mstate \<Rightarrow> posem \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> bool" ("_ _ free(pop[detached(_)]) _ _" [200,200,200,200,200])    \<comment>\<open>pop(detached[tid-1])\<close>
+(********* free(pop(detached)) ******************)
+definition pop_address :: "mstate \<Rightarrow> posem \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> bool" ("_ _ free[pop[detached[_]]] _ _" [200,200,200,200,200])    \<comment>\<open>pop(detached[tid-1])\<close>
   where
   "pop_address ms ps t ms' ps' \<equiv> (\<exists>i. (A ps i = Some (hd((det ms) t), variable) \<and>
                                        kill ps i ps')) \<and> 
@@ -170,30 +117,28 @@ definition pop_address :: "mstate \<Rightarrow> posem \<Rightarrow> T \<Rightarr
                          (* wr_cap := (wr_cap ms) (hd((det ms) t):=None) \<comment>\<open> let go off wr_cap\<close>\<rparr>"    *)
 
 
-(*******   r[i] = rcu[i]   split**********)
-definition load_rcu_to_r :: "mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> T \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ _ r\<^sub>_[_] = rcu[_] _ _ _" [200,200,200,200,200,200,200,200,200])
+(*******   r[i] = rcu[i]   **********)
+definition load_rcu_to_r :: "mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow>  T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ _ r[i]:=rcu[i] _ _ _ _" [200,200,200,200,200])
   where
-  "load_rcu_to_r ms ps \<sigma> t ctr1 ctr2 ms' ps' \<sigma>' \<equiv> ctr1 = ctr2 \<and> 
-                                    (\<exists>x y.  (A ps y = Some (rcu_0, pointer)) 
-                                      \<and> \<sigma> [x \<leftarrow>(rcu_0 + ctr1)]\<^sub>t \<sigma>'
-                                      \<and> ms' = ms \<lparr> r := (r ms) (t := ((r ms) t) (ctr1 :=x)),
+  "load_rcu_to_r ms ps \<sigma> t ms' ps' \<sigma>' \<equiv> ps = ps' \<and> (\<exists>x y.  (A ps y = Some (rcu_0, pointer)) 
+                                      \<and> \<sigma> [x \<leftarrow>(rcu_0 + (for_ctr ms t))]\<^sub>t \<sigma>'
+                                      \<and> ms' = ms \<lparr> r := (r ms) (t := ((r ms) t) ((for_ctr ms t) :=x)),
                                                       pc := (pc ms) (t := I4) \<rparr>)"
 
-definition enter_rcu :: "mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ _ rcuenter(_) _ _ _" [200,200,200,200,200,200,200])
+definition enter_rcu :: "posem \<Rightarrow> surrey_state \<Rightarrow> T \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ rcuenter[] _ _ _" [200,200,200,200,200])
   where
-  "enter_rcu ms ps \<sigma> t ms' ps' \<sigma>' \<equiv>  (\<exists>x.  (A ps x = Some (rcu_0, pointer))
-                                      \<and> (\<sigma> [ (rcu_0+t) := 1 ]\<^sub>t \<sigma>')
-                                      \<and> (ms' = ms \<lparr> pc := (pc ms) (t := I4) \<rparr>))" 
+  "enter_rcu ps \<sigma> t  ps' \<sigma>' \<equiv>  ps = ps' \<and> (\<exists>x.  (A ps x = Some (rcu_0, pointer))
+                                      \<and> (\<sigma> [ (rcu_0+t) := 1 ]\<^sub>t \<sigma>'))" 
 
-definition exit_rcu :: "mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ _ rcuexit(_) _ _ _" [200,200,200,200,200,200,200])
+definition exit_rcu :: "posem \<Rightarrow> surrey_state \<Rightarrow> T \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ rcuexit[] _ _ _" [200,200,200,200,200])
   where
-  "exit_rcu ms ps \<sigma> t ms' ps' \<sigma>' \<equiv>  (\<exists>x.  (A ps x = Some (rcu_0, pointer))
-                                      \<and> (\<sigma> [ (rcu_0+t) := 0 ]\<^sub>t \<sigma>')
-                                      \<and> (ms' = ms \<lparr> pc := (pc ms) (t := I4) \<rparr>))" 
+  "exit_rcu ps \<sigma> t ps' \<sigma>' \<equiv>  ps = ps' \<and> (\<exists>x.  (A ps x = Some (rcu_0, pointer))
+                                      \<and> (\<sigma> [ (rcu_0+t) := 0 ]\<^sub>t \<sigma>'))" 
 
-definition setup_r :: "mstate \<Rightarrow> T \<Rightarrow>  mstate \<Rightarrow> bool" ("_ r[N]\<^sub>_ := _" [200])    \<comment>\<open>r[N] = {0}\<close>
+definition setup_r :: "mstate \<Rightarrow> T \<Rightarrow>  mstate \<Rightarrow> bool" ("_ r[N]:={0} _ _" [200])    \<comment>\<open>r[N] = {0}\<close>
   where
-  "setup_r  ms t ms' \<equiv> ms' = ms\<lparr>r := \<lambda> x n. if x = t then 0 else r ms x n\<rparr>"
+  "setup_r  ms t ms' \<equiv> ms' = ms\<lparr>r := \<lambda> x n. if x = t then 0 else r ms x n,
+                                  pc := (pc ms) (t := S2)\<rparr>"
 
 
 
@@ -221,29 +166,33 @@ definition take_rd_cap :: "L \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> 
 
 
 
-
-
-
-
-
-
-
-
-
-definition insert_address :: " T \<Rightarrow> nat \<Rightarrow> mstate \<Rightarrow> mstate" ("insert[detached(_),_]" [200,200])    \<comment>\<open>insert(_, s)\<close>
+definition insert_address :: " mstate \<Rightarrow> T \<Rightarrow> nat \<Rightarrow> mstate \<Rightarrow> bool" ("_ insert[detached[_],_] _" [200,200,200,200])    \<comment>\<open>insert(_, s)\<close>
   where
-  "insert_address loc t ms  \<equiv> ms\<lparr> det := (det ms) (t:= (((det ms) t) @ [loc])) \<rparr>"
+  "insert_address ms loc t ms' \<equiv> ms' = ms\<lparr> det := (det ms) (t:= (((det ms) t) @ [loc])),
+                                            pc := (pc ms) (t := S2) \<rparr>"
 
 
-definition nondet :: " T \<Rightarrow> bool \<Rightarrow> mstate \<Rightarrow> mstate" ("nondet[_,_]" [200])    \<comment>\<open>nondet()\<close>
+definition nondet :: "mstate \<Rightarrow> T \<Rightarrow> bool \<Rightarrow> mstate \<Rightarrow> bool" ("_ nondet[_,_] _" [200,200,200,200])    \<comment>\<open>nondet()\<close>
   where
-  "nondet t b ms \<equiv> (ms \<lparr> nondet_val := (nondet_val ms) (t:= b)\<rparr>) "
+  "nondet ms t b ms' \<equiv> ms' = ms \<lparr> nondet_val := (nondet_val ms) (t:= b),
+                                          pc := (pc ms) (t := S2)\<rparr>"
 
-definition update_pc :: "T \<Rightarrow> PC \<Rightarrow> mstate \<Rightarrow>  mstate" ( "pc[_]:=_" [200,200])
+
+abbreviation rcu_temp_copy :: "mstate \<Rightarrow> surrey_state \<Rightarrow> nat \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ load(_)\<^sub>_ _ _" [200,200,200,200,200,200])
   where
-  "update_pc t pc_val ms \<equiv>  ms \<lparr> pc := (pc ms) (t:=pc_val) \<rparr> "
+  "rcu_temp_copy ms \<sigma> ctr_val t ms' \<sigma>'\<equiv> \<exists> v. ((\<sigma> [ v \<leftarrow> (rcu_0 + ctr_val)]\<^sub>t \<sigma>')     \<comment>\<open>read rcu[i]\<close>
+                                        \<and> (ms' = ms\<lparr>reg := (reg ms) (t := v),
+                                                    pc := (pc ms) (t := S8)\<rparr>)) "
 
-
+definition cas_step_rcu :: "mstate \<Rightarrow> surrey_state \<Rightarrow>T \<Rightarrow> L \<Rightarrow> V \<Rightarrow> V \<Rightarrow> mstate \<Rightarrow>  surrey_state \<Rightarrow> bool" 
+ where
+    "cas_step_rcu ms \<sigma> t l cv nv ms' \<sigma>'\<equiv>           \<comment>\<open>CAS(&C,s,n)\<close>
+       \<exists> w ts'. w \<in> visible_writes \<sigma> t l \<and>
+               w \<notin> covered \<sigma> \<and>
+               valid_fresh_ts \<sigma> w ts' \<and>
+       \<sigma>' = fst(CAS t w cv nv \<sigma> ts')
+       \<and> (ms' = ms\<lparr>CAS_succ := (CAS_succ ms) (t := snd(CAS t w cv nv \<sigma> ts')),
+                         pc := (pc ms) (t := I12)\<rparr>)"           \<comment>\<open>acquire wr_cap on location\<close>
 
 
 
@@ -262,22 +211,9 @@ abbreviation update_ctr :: "T \<Rightarrow> nat \<Rightarrow> mstate \<Rightarro
   where
   "update_ctr t ctr_val ms \<equiv> ms \<lparr> for_ctr := (for_ctr ms) (t:=ctr_val) \<rparr> "
 
-abbreviation rcu_temp_copy :: "mstate \<Rightarrow> surrey_state \<Rightarrow> nat \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> surrey_state \<Rightarrow> bool" ( "_ _ load(_)\<^sub>_ _ _" [200,200,200,200,200,200])
+definition update_pc :: "T \<Rightarrow> PC \<Rightarrow> mstate \<Rightarrow>  mstate" ( "pc[_]:=_" [200,200])
   where
-  "rcu_temp_copy ms \<sigma> ctr_val t ms' \<sigma>'\<equiv> \<exists> v. ((\<sigma> [ v \<leftarrow> (rcu_0 + ctr_val)]\<^sub>t \<sigma>')     \<comment>\<open>read rcu[i]\<close>
-                                        \<and> (ms' = ms\<lparr>reg := (reg ms) (t := v),
-                                                    pc := (pc ms) (t := S8)\<rparr>)) "
-
-definition cas_step_rcu :: "mstate \<Rightarrow> surrey_state \<Rightarrow>T \<Rightarrow> L \<Rightarrow> V \<Rightarrow> V \<Rightarrow> mstate \<Rightarrow>  surrey_state \<Rightarrow> bool" 
- where
-    "cas_step_rcu ms \<sigma> t l cv nv ms' \<sigma>'\<equiv>           \<comment>\<open>CAS(&C,s,n)\<close>
-       \<exists> w ts'. w \<in> visible_writes \<sigma> t l \<and>
-               w \<notin> covered \<sigma> \<and>
-               valid_fresh_ts \<sigma> w ts' \<and>
-       \<sigma>' = fst(CAS t w cv nv \<sigma> ts')
-       \<and> (ms' = ms\<lparr>CAS_succ := (CAS_succ ms) (t := snd(CAS t w cv nv \<sigma> ts')),
-                         pc := (pc ms) (t := I12),
-                         wr_cap := (wr_cap ms) (cv := Some t)\<rparr>)"           \<comment>\<open>acquire wr_cap on location\<close>
+  "update_pc t pc_val ms \<equiv>  ms \<lparr> pc := (pc ms) (t:=pc_val) \<rparr> "
 
 
 
@@ -292,80 +228,89 @@ definition cas_step_rcu :: "mstate \<Rightarrow> surrey_state \<Rightarrow>T \<R
 (*==========================   Thread behaviour   =================================*)
 
 section \<open>Reclaim Method\<close>
-definition reclaim :: "PC \<Rightarrow> T \<Rightarrow> L \<Rightarrow>  mstate \<Rightarrow> surrey_state \<Rightarrow> mstate \<Rightarrow> surrey_state \<Rightarrow> bool " where
-"reclaim pcr t loc ms \<sigma> ms' \<sigma>' \<equiv> 
+definition reclaim :: "mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow>  PC \<Rightarrow> T \<Rightarrow> L \<Rightarrow>  mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> bool " where
+"reclaim ms ps \<sigma> pcr t loc ms' ps' \<sigma>' \<equiv> 
 case pcr of 
-   R1 \<Rightarrow> (ms' = ((insert[detached(t),loc]) \<circ> (pc[t]:=R2)) ms) \<and> \<sigma> =\<sigma>'
-|  R2 \<Rightarrow> (\<exists>b. (b\<in>{True,False} \<and> ms' = (nondet[t,b] \<circ> pc[t]:=R2) ms)) \<and> \<sigma> =\<sigma>'
+   R1 \<Rightarrow> (ms insert[detached[t],the (s_val ms t)] ms') \<and> ps = ps' \<and> \<sigma> =\<sigma>' 
+|  R2 \<Rightarrow> (\<exists>b. (b\<in>{True,False} \<and> (ms nondet[t,b] ms'))) \<and> ps = ps' \<and> \<sigma> =\<sigma>' 
 |  R3 \<Rightarrow> if (nondet_val ms t) = True 
-            then ms' = (pc[t]:=S1)  ms    \<and> \<sigma> =\<sigma>'  
+            then ms' = (pc[t]:=S1) ms  \<and> ps = ps' \<and> \<sigma> =\<sigma>'  
                \<comment>\<open> sync() \<close>
-            else ms' = (pc[t]:=I14) ms    \<and> \<sigma> =\<sigma>'    \<comment>\<open> return to inc() \<close>
+            else ms' = (pc[t]:=I14) ms  \<and> ps = ps' \<and> \<sigma> =\<sigma>'  
+               \<comment>\<open> return to inc() \<close>
 |  R4 \<Rightarrow> if (det ms t \<noteq> [])
-            then ms' = (pc[t]:=R5)  ms    \<and> \<sigma> =\<sigma>'
-            else ms' = (pc[t]:=I14) ms    \<and> \<sigma> =\<sigma>'    \<comment>\<open> return to inc() \<close>
-|  R5 \<Rightarrow> (ms'= ((pop[detached(t)]) \<circ> (pc[t]:=R4)) ms)  \<and> \<sigma> =\<sigma>'"
+            then ms' = (pc[t]:=R5)  ms  \<and> ps = ps' \<and> \<sigma> =\<sigma>'  
+            else ms' = (pc[t]:=I14) ms  \<and> ps = ps' \<and> \<sigma> =\<sigma>'     \<comment>\<open> return to inc() \<close>
+|  R5 \<Rightarrow> (ms ps free[pop[detached[the (s_val ms t)]]] ms' ps')  \<and> \<sigma> =\<sigma>'"
 
 
 section \<open>Sync Method\<close>
-definition synch :: "PC \<Rightarrow> T \<Rightarrow>  mstate \<Rightarrow> surrey_state \<Rightarrow> mstate \<Rightarrow> surrey_state \<Rightarrow> bool " where
-"synch pcr t ms \<sigma> ms' \<sigma>' \<equiv> 
+definition synch :: "mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> PC \<Rightarrow> T \<Rightarrow>  mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> bool " where
+"synch ms ps \<sigma> pcr t ms' ps' \<sigma>' \<equiv> 
 case pcr of
-   S1 \<Rightarrow> ms' = ((r[N]\<^sub>t := 0) \<circ> ctr[t]:=0 \<circ> pc[t]:=S2) ms'    \<and> \<sigma> =\<sigma>'
+   S1 \<Rightarrow> (ms r[N]:={0} t ms) \<and> ps = ps'  \<and> \<sigma> = \<sigma>'
 |  S2 \<Rightarrow> if (for_ctr ms t < T_max)
-            then ms' = (pc[t]:=S3) ms    \<and> \<sigma> =\<sigma>'
-            else ms' = (pc[t]:=S4) ms    \<and> \<sigma> =\<sigma>'
-|  S3 \<Rightarrow> (ms \<sigma> r[t,(for_ctr ms t)]:=rcuequiv ms' \<sigma>')
-|  S4 \<Rightarrow> ms' = (ctr[t]:=0 \<circ> pc[t]:=S5) ms    \<and> \<sigma> =\<sigma>'
+            then ms' = (pc[t]:=S3) ms \<and> ps = ps' \<and> \<sigma> =\<sigma>'
+            else ms' = (pc[t]:=S4) ms \<and> ps = ps' \<and> \<sigma> =\<sigma>'
+|  S3 \<Rightarrow> (ms ps \<sigma> r[i]:=rcu[i] t ms' ps' \<sigma>')
+|  S4 \<Rightarrow> ms' = (ctr[t]:=0 \<circ> pc[t]:=S5) ms \<and> ps = ps' \<and> \<sigma> =\<sigma>'
 |  S5 \<Rightarrow> if (for_ctr ms t < T_max)
-            then ms' = (pc[t]:=S6) ms    \<and> \<sigma> =\<sigma>'
-            else ms' = (pc[t]:=R4) ms    \<and> \<sigma> =\<sigma>'        \<comment>\<open> return to Reclaim (R4)\<close>
+            then ms' = (pc[t]:=S6) ms \<and> ps = ps' \<and> \<sigma> =\<sigma>'
+            else ms' = (pc[t]:=R4) ms \<and> ps = ps' \<and> \<sigma> =\<sigma>'        \<comment>\<open> return to Reclaim (R4)\<close>
 |  S6 \<Rightarrow> if r ms t (for_ctr ms t) = 0
-            then ms' = (pc[t]:=S7) ms    \<and> \<sigma> =\<sigma>'
-            else ms' = (pc[t]:=S8) ms    \<and> \<sigma> =\<sigma>'
-|  S7 \<Rightarrow> ms \<sigma> load(for_ctr ms t)\<^sub>t ms' \<sigma>'         \<comment>\<open> load \<langle>rcu[i]\<rangle> into reg, increment pc\<close>
-|  S8 \<Rightarrow> if reg ms t = 1                         \<comment>\<open> test while \<langle>rcu[i]\<rangle>\<close>
+            then ms' = (pc[t]:=S7) ms \<and> ps = ps' \<and> \<sigma> =\<sigma>'
+            else ms' = (pc[t]:=S8) ms \<and> ps = ps' \<and> \<sigma> =\<sigma>'
+|  S7 \<Rightarrow> ms \<sigma> load(for_ctr ms t)\<^sub>t ms' \<sigma>' \<and> ps = ps'  \<comment>\<open> load \<langle>rcu[i]\<rangle> into reg, increment pc\<close>
+|  S8 \<Rightarrow> if reg ms t = 1                             \<comment>\<open> test while \<langle>rcu[i]\<rangle>\<close>
             then True
-            else ms' = (ctr[t]++ \<circ> pc[t]:=S5) ms    \<and> \<sigma> =\<sigma>'"
+            else ms' = (ctr[t]++ \<circ> pc[t]:=S5) ms \<and> ps = ps' \<and> \<sigma> =\<sigma>'"
 
 section \<open>Increment Method\<close>
-definition increment :: "PC \<Rightarrow> T \<Rightarrow>  mstate \<Rightarrow> surrey_state \<Rightarrow> mstate \<Rightarrow> surrey_state \<Rightarrow> bool " where
-"increment pcr t ms \<sigma> ms' \<sigma>' \<equiv> 
+definition increment :: "mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> PC \<Rightarrow> T \<Rightarrow> mstate \<Rightarrow> posem \<Rightarrow> surrey_state \<Rightarrow> bool " where
+"increment ms ps \<sigma> pcr t ms' ps' \<sigma>' \<equiv> 
 case pcr of
-   I1  \<Rightarrow> (ms int\<^sub>v[t] ms') \<and> \<sigma> = \<sigma>'       \<comment>\<open> int v, v=0\<close>
-|  I2  \<Rightarrow> (ms int\<^sub>n[t] ms') \<and> \<sigma> = \<sigma>'       \<comment>\<open> int n\<close>
-|  I3  \<Rightarrow> (ms int\<^sub>s[t] ms') \<and> \<sigma> = \<sigma>'       \<comment>\<open> int s\<close>
-|  I4  \<Rightarrow> (ms \<sigma> newint[*n, t] ms' \<sigma>')     \<comment>\<open> *n=new int\<close>
-|  I5  \<Rightarrow> (\<sigma> enter[t] \<sigma>) \<and> (ms' = (pc[t]:=I6) ms)                \<comment>\<open> rcu_enter()\<close>
-|  I6  \<Rightarrow> (\<sigma> exit[t] \<sigma>)  \<and> (ms' = ((pc[t]:=I7) \<circ> (give\<^sub>u\<^sub>p t)) ms)  \<comment>\<open> rcu_exit()     relinquish all read capabilities\<close>
-|  I7  \<Rightarrow> (\<sigma> enter[t] \<sigma>) \<and> (ms' = (pc[t]:=I8) ms)                \<comment>\<open> rcu_enter()\<close>
-|  I8  \<Rightarrow> ms \<sigma> load[(s ms t),C,t] ms' \<sigma>'                                \<comment>\<open> s=C \<close>
-|  I9  \<Rightarrow> (ms' = ((pc[t]:=I10)\<circ> (v[t]:=(s ms t))) ms)     \<and> \<sigma> = \<sigma>'      \<comment>\<open> v=*s ******    redundant step, if we assume Allocation map to not have weak behaviour\<close>
-|  I10 \<Rightarrow> (ms' = ((pc[t]:=I11)\<circ> (*n[t]:=(v ms t + 1))) ms) \<and> \<sigma> = \<sigma>'      \<comment>\<open> *n=v+1 ****** \<close>
-|  I11 \<Rightarrow> cas_step_rcu ms \<sigma> t C (s ms t) (n ms t) ms' \<sigma>'          \<comment>\<open> CAS(&C,s,n) \<close>
+   I1  \<Rightarrow> (ms int[v\<^sub>t] ms')  \<and> ps = ps' \<and> \<sigma> = \<sigma>'
+|  I2  \<Rightarrow> (ms int[*n\<^sub>t] ms') \<and> ps = ps' \<and> \<sigma> = \<sigma>'
+|  I3  \<Rightarrow> (ms int[*s\<^sub>t] ms') \<and> ps = ps' \<and> \<sigma> = \<sigma>'
+|  I4  \<Rightarrow> (ms ps n:=newint t ms' ps')  \<and> \<sigma> = \<sigma>'
+|  I5  \<Rightarrow> (ps \<sigma> rcuenter[] t ps' \<sigma>') \<and> (ms' = (pc[t]:=I6) ms)
+|  I6  \<Rightarrow> (ps \<sigma> rcuexit[] t ps' \<sigma>')  \<and> (ms' = (pc[t]:=I7) ms)  \<comment>\<open> relinquish all read capabilities\<close>
+|  I7  \<Rightarrow> (ps \<sigma> rcuenter[] t ps' \<sigma>') \<and> (ms' = (pc[t]:=I8) ms)
+|  I8  \<Rightarrow> (ms ps \<sigma> s:=C t ms' ps' \<sigma>')
+|  I9  \<Rightarrow> (ms \<sigma> v:=*s t ms' \<sigma>')      \<and> ps = ps'     
+|  I10 \<Rightarrow> (ms \<sigma> *n:=newv t ms' \<sigma>')   \<and> ps = ps'
+|  I11 \<Rightarrow> cas_step_rcu ms \<sigma> t C (the (s_val ms t)) (the (n_val ms t)) ms' \<sigma>' \<and> ps = ps'
 |  I12 \<Rightarrow> if CAS_succ ms t
             then (ms' = (pc[t]:=I13) ms)
             else (ms' = (pc[t]:=I6) ms)
-|  I13 \<Rightarrow> (\<sigma> exit[t] \<sigma>) \<and> (ms' = ((pc[t]:=R1) \<circ> (give\<^sub>u\<^sub>p t)) ms)    \<comment>\<open> rcu_exit()     relinquish all read capabilities\<close>
+|  I13 \<Rightarrow> (ps \<sigma> rcuexit[] t ps' \<sigma>') \<and> (ms' = ((pc[t]:=R1)) ms) \<comment>\<open>relinquish all read capabilities\<close>
         \<comment>\<open>reclaim(s)\<close>
 |  I14 \<Rightarrow> (ms' = (pc[t]:=I15) ms) \<and> \<sigma> = \<sigma>'   \<comment>\<open> return(v) \<close>"
 
 
-definition "init ms  \<equiv>  (\<forall>t. (t<T_max)\<longrightarrow> pc ms t = I1
-                                        \<and> v ms t = 0
-                                        \<and> n ms t = 0
-                                        \<and> s ms t = 0
-                                        \<and> det ms t = []
-                                        \<and> for_ctr ms t = 0
-                                        \<and> res ms t = False
-                                        \<and> reg ms t = 0
-                                       
-                                        \<and> nondet_val ms t = False
-                                        \<and> CAS_succ ms t = False
-                                        \<and> rd_cap ms t = {}
-                                        \<and> wr_cap ms t = None)
-\<comment>\<open> free_addrs ms t = ?)\<close>
-                     \<and> (\<forall>t i. (t<T_max \<and> i<T_max)\<longrightarrow> r ms t i = 0)"
+definition "init ms ps \<equiv>  (\<forall>t. (t<T_max)\<longrightarrow> pc ms t = I1
+                         \<and> v ms t = False
+                         \<and> n ms t = False
+                         \<and> s ms t = False
+                         \<and> v_val ms t = Some (0)
+                         \<and> n_val ms t = Some (0)
+                         \<and> s_val ms t = Some (0) 
+                         \<and> det ms t = []
+                         \<and> for_ctr ms t = 0
+                         \<and> res ms t = 0
+                         \<and> reg ms t = 0
+                         \<and> nondet_val ms t = False
+                         \<and> CAS_succ ms t = False)
+                         \<and> (\<forall>t k. (t<T_max \<and> k<T_max) \<longrightarrow> 
+                                          r ms t k = 0)
+        \<and> (\<forall>i j. (i\<ge>0 \<and> j\<ge>0) \<longrightarrow> 
+                       A ps i = None
+                     \<and> rd_cap ps j = {}
+                     \<and> wr_cap ps j = None)
+                     \<and> alloc_addrs ps = {}"
+
+
+
 
 
 
@@ -408,33 +353,7 @@ rd_cap(i) \<noteq> {} \<longrightarrow> A(i) --\\<longrightarrow> none
 wr_cap(i) \<noteq> {} \<longrightarrow> A(i) --\\<longrightarrow> none
 wr_cap(i) \<noteq> {} \<longrightarrow> cannot acquire rd_cap(i)
 
-A(0) = (x52,pointer)
-A(1) = (x78, variable)
-
-
-A(0) = (x52,pointer)
-A(1) = (x78,variable)
-
-*A(0) = 0
-M(x78,variable) = 0
-M(x52,pointer) = x78
-
-
-[load_C ms t <--_t C]     <---- returns C
-*A(0) = {x | \<exists>i. i=x \<and> fst(A(i)) = load_C}
-
-***or equivalently***
-
-\<exists>j. A(j) = (load_C, variable)
-[load_old ms t <--_t load_C]    <---- returns old
 
 
 *)
-
-
-
-lemma "reclaim R2 t l ms \<sigma> ms' \<sigma>' 
-  \<Longrightarrow>  (nondet_val ms' t) \<in>{True,False}"
-  by simp
-
 
