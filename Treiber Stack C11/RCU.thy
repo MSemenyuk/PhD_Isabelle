@@ -241,7 +241,7 @@ case pcr of
 |  R4 \<Rightarrow> if (det ms t \<noteq> [])
             then ms' = (pc[t]:=R5)  ms  \<and> ps = ps' \<and> \<sigma> =\<sigma>'  
             else ms' = (pc[t]:=I14) ms  \<and> ps = ps' \<and> \<sigma> =\<sigma>'     \<comment>\<open> return to inc() \<close>
-|  R5 \<Rightarrow> (ms ps free[pop[detached[the (s_val ms t)]]] ms' ps')  \<and> \<sigma> =\<sigma>'"
+|  R5 \<Rightarrow> (ms ps free[pop[detached[t]]] ms' ps')  \<and> \<sigma> =\<sigma>'"                  \<comment>\<open> ownW ps hd(det ps t) := None \<close>
 
 
 section \<open>Sync Method\<close>
@@ -272,29 +272,32 @@ case pcr of
    I1  \<Rightarrow> (ms int[v\<^sub>t] ms')  \<and> ps = ps' \<and> \<sigma> = \<sigma>'
 |  I2  \<Rightarrow> (ms int[*n\<^sub>t] ms') \<and> ps = ps' \<and> \<sigma> = \<sigma>'
 |  I3  \<Rightarrow> (ms int[*s\<^sub>t] ms') \<and> ps = ps' \<and> \<sigma> = \<sigma>'
-|  I4  \<Rightarrow> (ms ps n:=newint t ms' ps')  \<and> \<sigma> = \<sigma>'
+|  I4  \<Rightarrow> (ms ps n:=newint t ms' ps')  \<and> \<sigma> = \<sigma>'                            \<comment>\<open> ownW ps n := Some t\<close>
 |  I5  \<Rightarrow> (ps \<sigma> rcuenter[] t ps' \<sigma>') \<and> (ms' = (pc[t]:=I6) ms)
-|  I6  \<Rightarrow> (ps \<sigma> rcuexit[] t ps' \<sigma>')  \<and> (ms' = (pc[t]:=I7) ms)  \<comment>\<open> relinquish all read capabilities\<close>
+|  I6  \<Rightarrow> (ps \<sigma> rcuexit[] t ps' \<sigma>')  \<and> (ms' = (pc[t]:=I7) ms)              \<comment>\<open> ownR ps s := ownR ps s - {t}\<close> \<comment>\<open>t knows s=C\<close>
 |  I7  \<Rightarrow> (ps \<sigma> rcuenter[] t ps' \<sigma>') \<and> (ms' = (pc[t]:=I8) ms)
-|  I8  \<Rightarrow> (ms ps \<sigma> s:=C t ms' ps' \<sigma>')
+\<comment>\<open> SC fence \<close>
+|  I8  \<Rightarrow> (ms ps \<sigma> s:=C t ms' ps' \<sigma>')                                      \<comment>\<open> ownR ps s := ownR ps s \<union> {t} ... technically C\<close>
 |  I9  \<Rightarrow> (ms \<sigma> v:=*s t ms' \<sigma>')      \<and> ps = ps'     
-|  I10 \<Rightarrow> (ms \<sigma> *n:=newv t ms' \<sigma>')   \<and> ps = ps'
-|  I11 \<Rightarrow> cas_step_rcu ms \<sigma> t C (the (s_val ms t)) (the (n_val ms t)) ms' \<sigma>' \<and> ps = ps'
+|  I10 \<Rightarrow> (ms \<sigma> *n:=newv t ms' \<sigma>')   \<and> ps = ps'\<comment>\<open> t must have (ownW ps n) to do this step \<close>
+|  I11 \<Rightarrow> cas_step_rcu ms \<sigma> t C (the (s_val ms t)) (the (n_val ms t)) ms' \<sigma>' \<and> ps = ps' 
 |  I12 \<Rightarrow> if CAS_succ ms t
-            then (ms' = (pc[t]:=I13) ms)
-            else (ms' = (pc[t]:=I6) ms)
-|  I13 \<Rightarrow> (ps \<sigma> rcuexit[] t ps' \<sigma>') \<and> (ms' = ((pc[t]:=R1)) ms) \<comment>\<open>relinquish all read capabilities\<close>
+            then (ms' = (pc[t]:=I13) ms)                                   \<comment>\<open> ownW ps s := Some t \<close>
+            else (ms' = (pc[t]:=I6) ms)  
+|  I13 \<Rightarrow> (ps \<sigma> rcuexit[] t ps' \<sigma>') \<and> (ms' = ((pc[t]:=R1)) ms)             \<comment>\<open> ownR ps n := ownR ps n - {t}\<close> \<comment>\<open> t doesn't know if n=C\<close>
         \<comment>\<open>reclaim(s)\<close>
-|  I14 \<Rightarrow> (ms' = (pc[t]:=I15) ms) \<and> \<sigma> = \<sigma>'   \<comment>\<open> return(v) \<close>"
+|  I14 \<Rightarrow> (ms' = (pc[t]:=I15) ms) \<and> \<sigma> = \<sigma>' \<and> ps = ps'   \<comment>\<open> return(v) \<close>"
 
-
+(*
+@I5 .. I11 \<forall>t'. t \<noteq> t' \<longrightarrow> t'\<notin>ownR ps n
+*)
 definition "init ms ps \<equiv>  (\<forall>t. (t<T_max)\<longrightarrow> pc ms t = I1
                          \<and> v ms t = False
                          \<and> n ms t = False
                          \<and> s ms t = False
-                         \<and> v_val ms t = Some (0)
-                         \<and> n_val ms t = Some (0)
-                         \<and> s_val ms t = Some (0) 
+                         \<and> the (v_val ms t) = 0
+                         \<and> the (n_val ms t) = 0
+                         \<and> the (s_val ms t) = 0
                          \<and> det ms t = []
                          \<and> for_ctr ms t = 0
                          \<and> res ms t = 0
