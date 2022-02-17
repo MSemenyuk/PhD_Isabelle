@@ -10,8 +10,6 @@ type_synonym id = nat
 record posem = 
   A :: "id \<Rightarrow> (L \<times> object_type) option"
   alloc_addrs :: "L set"  (* allocation *)
-  rd_cap :: "L \<Rightarrow> T set"             (*aux*)
-  wr_cap :: "L \<Rightarrow> T option"          (*aux*)
   obj_ctr :: "nat"            (*always increasing with \<forall>i.i\<ge>obj_ctr s \<longrightarrow> A(i) = None*)
                               (* have old pointers *s point to 0, if freed/detached or current value of C - in critical*)
 
@@ -25,18 +23,5 @@ definition "kill ps prov ps' \<equiv> \<exists>x. (prov \<in> dom(A ps) \<and> S
 \<and> ps' = ps \<lparr> A:= (A ps) (prov:= None),
             alloc_addrs := (alloc_addrs ps - {fst(x)})\<rparr>)"
 
-definition "gain_rd_cap ps loc t ps' \<equiv> \<not>isfree_addr loc ps 
-\<and> ps' = ps \<lparr> rd_cap := (rd_cap ps) (loc := (rd_cap ps loc \<union> {t}))\<rparr>"
-
-definition "undo_rd_cap ps loc t ps' \<equiv> \<not>isfree_addr loc ps 
-\<and> ps' = ps \<lparr> rd_cap := (rd_cap ps) (loc := (rd_cap ps loc - {t}))\<rparr>"
-
-definition "gain_wd_cap ps loc t ps' \<equiv> \<not>isfree_addr loc ps 
-\<and> ps' = ps \<lparr> rd_cap := (rd_cap ps) (loc := (rd_cap ps loc \<union> {t}))\<rparr>"
-
-definition "undo_wd_cap ps loc t ps' \<equiv> \<not>isfree_addr loc ps 
-\<and> ps' = ps \<lparr> rd_cap := (rd_cap ps) (loc := (rd_cap ps loc - {t}))\<rparr>"
-
-
-
+lemmas posem_lemmas [simp] = isfree_addr_def allocate_object_def kill_def
 end
