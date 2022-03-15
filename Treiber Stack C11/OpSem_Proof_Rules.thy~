@@ -2286,13 +2286,4 @@ shows "v = u"
 
 
 
-lemma cvd_FAAZ:
-  assumes "wfs \<sigma> "
-  and "cvd[(var w),u] \<sigma>"
-  and "valid_fresh_ts \<sigma> w ts'"
-  and "w \<in> visible_writes \<sigma> t (var w)"
-  and "\<sigma>' = update_trans t w u \<sigma> ts'" 
-shows "cvd[(var w),u] \<sigma>'"
-  using assms 
-  oops
 end
