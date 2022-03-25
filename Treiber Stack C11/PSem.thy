@@ -25,7 +25,7 @@ definition "Unique_allocs ps \<equiv> \<forall>prov alloc b. (A ps prov) = Some 
                                         prov\<noteq>prov' \<and> (A ps prov') = Some (alloc,b'))"
 
 definition "psem_rules ps \<equiv> Unique_allocs ps \<and> constant_alloc_ass ps"
-
+                                                           
 
 
 

@@ -1,5 +1,5 @@
 theory PSem 
-imports Main OpSem 
+imports Main OpSem_Proof_Rules
 begin 
 
 datatype object_type = pointer | variable     (*object types to be added, specifically variable?*)

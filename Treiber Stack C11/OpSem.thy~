@@ -289,6 +289,9 @@ definition "CAS t w cv nv' \<sigma> ts' \<equiv>
       else 
         (read_trans t False w \<sigma>, False)"
 
+definition "FAAZ t w \<sigma> ts' \<equiv> 
+        (update_trans t w (value \<sigma> w) \<sigma> ts', value \<sigma> w)"
+
 definition cas_step :: "T \<Rightarrow> L \<Rightarrow> V \<Rightarrow> V \<Rightarrow> surrey_state \<Rightarrow> surrey_state \<Rightarrow> bool"
   where
     "cas_step t l cv nv \<sigma> \<sigma>'\<equiv>

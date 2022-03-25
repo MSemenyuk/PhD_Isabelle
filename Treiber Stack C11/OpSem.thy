@@ -461,6 +461,8 @@ definition "initial_state \<sigma> I \<equiv>
                        (\<forall> w. mods \<sigma> w = \<lparr> val = I (var w), is_releasing = False \<rparr>) \<and>
                        covered \<sigma> = {}"
 
+definition "lastWr \<sigma> x \<equiv> (x, Max (tst`(writes_on \<sigma> x)))"
+
 definition
   "wfs \<sigma> \<equiv>
       (\<forall> t x. thrView \<sigma> t x \<in> writes_on \<sigma> x) \<and>
@@ -469,8 +471,10 @@ definition
       (\<forall> w. w \<in> writes \<sigma> \<longrightarrow> modView \<sigma> w (var w) = w) \<and>
       covered \<sigma> \<subseteq> writes \<sigma>"
 
+definition
+  "wfs_2 \<sigma> \<equiv>
+      wfs \<sigma> \<and> (\<forall> x. lastWr \<sigma> x \<notin> covered \<sigma>)"
 
-definition "lastWr \<sigma> x \<equiv> (x, Max (tst`(writes_on \<sigma> x)))"
 
 
 
@@ -569,6 +573,14 @@ lemma initial_wfs: assumes "initial_state \<sigma> I"  shows "wfs \<sigma>"
     apply(rule conjI)
   apply (smt CollectD Pair_inject assms initial_state_def)
   using assms initial_state_def by fastforce
+
+lemma initial_wfs_2: assumes "initial_state \<sigma> I"  shows "wfs_2 \<sigma>"
+  apply(simp add: wfs_2_def)
+  apply(rule conjI)
+  using assms initial_wfs apply blast
+  using assms apply (simp add: initial_state_def)
+  by blast
+
 
 
 lemma [simp]: "wfs \<sigma> \<Longrightarrow> writes_on \<sigma> x \<noteq> {}"

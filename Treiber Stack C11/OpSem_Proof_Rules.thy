@@ -133,6 +133,31 @@ lemma wfs_preserved:
   using assms(1) wfs_def apply blast apply simp
   using assms(1) wfs_def by blast
 
+lemma wfs_2_preserved:
+  assumes "wfs_2 \<sigma>"
+      and "step t a \<sigma> \<sigma>'"
+    shows "wfs_2 \<sigma>'"
+  using assms apply(unfold wfs_2_def)
+  apply (intro conjI)
+  using wfs_preserved assms apply blast
+  apply (rule step_cases[OF assms(2)]) apply simp_all
+  using assms(1) wfs_2_def wfs_def apply auto[1]
+  apply (simp add: read_trans_def lastWr_def covered_v_def Let_def rev_app_def step_def update_thrView_def split:if_splits)
+     apply (unfold writes_on_def)
+  apply (simp add: var_def)
+  apply (simp add: var_def)
+  using assms(1)  apply auto[1]
+     apply (unfold writes_on_def wfs_2_def wfs_def)
+  apply (simp add: var_def update_mods_def update_modView_def  )
+  apply (simp add: write_trans_def valid_fresh_ts_def lastWr_def covered_v_def Let_def rev_app_def step_def update_thrView_def split:if_splits)
+     apply (unfold writes_on_def wfs_2_def wfs_def)
+  apply (simp add: write_trans_def valid_fresh_ts_def lastWr_def covered_v_def Let_def rev_app_def step_def update_thrView_def)
+  apply (simp add: visible_writes_def update_mods_def update_modView_def )
+   apply (unfold writes_on_def wfs_2_def wfs_def)
+   apply safe
+   apply (simp add: fst_def tst_def snd_def)
+  sorry
+
 
 
 
