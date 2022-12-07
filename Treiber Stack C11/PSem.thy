@@ -1,5 +1,5 @@
 theory PSem 
-imports Main OpSem_Proof_Rules
+imports Main 
 begin 
 
 datatype object_type = pointer | variable     (*object types to be added, specifically variable?*)
@@ -8,44 +8,51 @@ type_synonym address = nat
 type_synonym id = nat
 
 record posem = 
-  A :: "id \<Rightarrow> (L \<times> object_type) option"
-  alloc_addrs :: "L set"  (* allocation *)
-  obj_ctr :: "nat"            (*always increasing with \<forall>i.i\<ge>obj_ctr s \<longrightarrow> A(i) = None*)
-                              (* have old pointers *s point to 0, if freed/detached or current value of C - in critical*)
+  A :: "id \<Rightarrow> (nat \<times> object_type) option"
+  alloc_addrs :: "nat set"  (*locations in ran(A ps)*)
 
 
-definition "codomain_of_A ps \<equiv> \<Union>{{fst(alloc)} | alloc. alloc \<in> ran(A ps)}"
+
+definition "newran loc ps \<equiv> \<exists>b. (loc, b)\<in>ran(A ps)"
 
 definition "isfree_addr a ps \<equiv> a\<notin>(alloc_addrs ps) "
 
-definition "constant_alloc_ass ps \<equiv> \<forall>loc. (loc \<in> alloc_addrs ps \<longleftrightarrow> loc \<in> codomain_of_A ps)
-                                         \<and>(loc \<notin> alloc_addrs ps \<longleftrightarrow> loc \<notin> codomain_of_A ps)"
+definition "constant_alloc_ass ps \<equiv> \<forall>loc. (loc \<in> alloc_addrs ps \<longleftrightarrow> newran loc ps)"
 
-definition "Unique_allocs ps \<equiv> \<forall>prov alloc b. (A ps prov) = Some (alloc,b) \<longrightarrow> (\<nexists>prov' b'. 
-                                        prov\<noteq>prov' \<and> (A ps prov') = Some (alloc,b'))"
+definition "Unique_allocs ps \<equiv> \<forall>prov . prov\<in> dom(A ps) 
+\<longrightarrow> (\<nexists>prov'. prov'\<noteq>prov \<and> prov'\<in> dom(A ps) \<and> fst(the(A ps prov')) = fst(the(A ps prov)))"
 
 definition "psem_rules ps \<equiv> Unique_allocs ps \<and> constant_alloc_ass ps"
                                                            
 
-
-
-lemmas alloc_general_lemmas [simp] = codomain_of_A_def isfree_addr_def constant_alloc_ass_def
+lemmas alloc_general_lemmas [simp] = newran_def isfree_addr_def constant_alloc_ass_def
                                       Unique_allocs_def psem_rules_def
 
-lemma " psem_rules ps \<Longrightarrow> isfree_addr loc ps \<Longrightarrow> loc\<notin> codomain_of_A ps"
-  using alloc_general_lemmas isfree_addr_def by blast
 
 
 definition "allocate_object ps loc prov ps' typ \<equiv> isfree_addr loc ps \<and> prov \<notin> dom(A ps)
  \<and> ps' = ps\<lparr>A := (A ps) (prov:=Some (loc, typ)),
             alloc_addrs := (alloc_addrs ps \<union> {loc})\<rparr>"
 
-definition "kill ps prov ps' \<equiv> \<exists>x. (prov \<in> dom(A ps) \<and> Some x = A ps prov 
+definition "kill ps prov ps' \<equiv>  prov \<in> dom(A ps) 
 \<and> ps' = ps \<lparr> A:= (A ps) (prov:= None),
-            alloc_addrs := (alloc_addrs ps - {fst(x)})\<rparr>)"
+            alloc_addrs := (alloc_addrs ps - {fst(the(A ps prov))})\<rparr>"
+
 
 lemmas alloc_operation_lemmas [simp] = allocate_object_def kill_def
 
+
+
+
+
+(*------------might be useful in other proofs----------------*)
+lemma in_dom_notNone :
+  "prov\<in>dom(A ps) \<Longrightarrow> \<exists>loc b. A ps prov = Some (loc,b)"
+  by auto
+
+lemma "prov\<in>dom(A ps) \<Longrightarrow> constant_alloc_ass ps \<Longrightarrow> fst(the(A ps prov)) \<in> alloc_addrs ps"
+  apply(simp) 
+  by (metis fst_conv in_dom_notNone option.sel ranI)
 
 lemma set_alloc_addr_lem1:
   "allocate_object ps loc prov ps' typ
@@ -56,24 +63,14 @@ lemma set_alloc_addr_lem2:
   "allocate_object ps loc prov ps' typ
   \<Longrightarrow> prov \<in> dom(A ps')"
   by auto
-  
-lemma temp_lemma1:
-  "constant_alloc_ass ps \<Longrightarrow> loc \<in> alloc_addrs ps \<Longrightarrow> loc \<in> codomain_of_A ps"
-  by (simp)
-lemma temp_lemma2:
-  "constant_alloc_ass ps \<Longrightarrow> loc \<in> codomain_of_A ps \<Longrightarrow> loc \<in> alloc_addrs ps"
-  by (simp)
-lemma temp_lemma3:
-  "constant_alloc_ass ps \<Longrightarrow> loc \<notin> alloc_addrs ps \<Longrightarrow> loc \<notin> codomain_of_A ps"
-  by (simp)
-lemma temp_lemma4:
-  "constant_alloc_ass ps \<Longrightarrow> loc \<notin> codomain_of_A ps \<Longrightarrow> loc \<notin> alloc_addrs ps"
-  by (simp)
 
+lemma pssimp : "kill ps prov ps' \<Longrightarrow>
+  A ps' prov = None \<and> alloc_addrs ps' = alloc_addrs ps - {fst(the(A ps prov))}"
+  by(simp)
 
 lemma uniqueness_lemma1:
-  "constant_alloc_ass ps \<Longrightarrow> Unique_allocs ps \<Longrightarrow>
- loca \<in> codomain_of_A ps \<Longrightarrow> 
+  "constant_alloc_ass ps \<Longrightarrow> 
+ psem_rules ps \<Longrightarrow> 
  locb \<in> alloc_addrs ps \<Longrightarrow> 
  prova=provb \<Longrightarrow> fst(the(A ps prova)) = loca \<Longrightarrow> fst(the(A ps provb)) = locb \<Longrightarrow> loca=locb"
   by (simp)
@@ -88,30 +85,9 @@ lemma uniqueness_lemma2:
 lemma uniqueness_lemma3:
   "constant_alloc_ass ps \<Longrightarrow>
  isfree_addr loca ps \<Longrightarrow> 
- loca \<notin> codomain_of_A ps"
-  by simp
-lemma uniqueness_lemma4:
-  "constant_alloc_ass ps \<Longrightarrow>
- isfree_addr loca ps \<Longrightarrow> 
  \<nexists>prova b. A ps prova = Some (loca,b)"
   apply simp
-  by (metis insertI1 ranI)
-
-lemma uniqueness_lemma5:
-  "constant_alloc_ass ps \<Longrightarrow>
- isfree_addr loca ps \<Longrightarrow> 
-A ps 1 = Some (1, pointer) \<Longrightarrow>
-A ps 2 = Some (1, variable)
-\<Longrightarrow>
-\<not> Unique_allocs ps "
-  apply simp 
-  by (metis n_not_Suc_n numeral_2_eq_2)
-  
-
-
-
-
-
+  by (metis ranI)
 
 lemma alloc_step_1:
   assumes "prov \<notin> dom(A ps)"
@@ -148,80 +124,75 @@ lemma kill_preserves_structure_2:
   and "kill ps prov ps'"
   and "Unique_allocs ps"
   and "\<exists>b. A ps prov = Some(loc, b)"
-shows "loc \<notin> codomain_of_A ps'"
+shows "\<not>newran loc ps'"
   using assms apply simp
   apply clarify apply auto 
-  by (metis ComplD insertCI ran_restrictD restrict_complement_singleton_eq)
+  by (metis ComplD domI fstI insertCI option.sel ran_restrictD restrict_complement_singleton_eq)
+
+
+
+   
   
-lemma kill_preserves_structure_3:
-  assumes "constant_alloc_ass ps"
-  and "kill ps prov ps'"
-  and "Unique_allocs ps"
-  and "\<exists>b. A ps prov = Some(loc, b)"
-shows "\<nexists>prov b. A ps' prov = Some(loc, b)"
-  using assms apply simp
-  apply clarify apply auto 
-  by (metis option.discI)
+(*-----------------penultimate--------------------*)
+
+lemma testingthisone:
+  "(loc,b)\<in>ran(A ps) \<Longrightarrow> (\<exists>prov. (prov\<in>dom(A ps) \<and> the(A ps prov) = (loc,b)))"
+  by (smt (verit) domI mem_Collect_eq option.sel ran_def)
 
 lemma allocation_preserves_structure:
-  assumes "prov \<notin> dom(A ps)"
-  and "constant_alloc_ass ps"
-  and "isfree_addr loc ps"
+  assumes "psem_rules ps"
   and "allocate_object ps loc prov ps' typ"
 shows "constant_alloc_ass ps'"
   using assms apply simp 
-  apply clarify
-  by (smt (z3) assms(1) domIff insert_iff old.prod.inject ran_map_upd singletonD)
+  apply clarify 
+  by (metis Domain_iff Domain_insert insertCI insertE option.exhaust_sel ran_map_upd)
+
 
 lemma kill_preserves_structure:
-  assumes "constant_alloc_ass ps"
+  assumes "psem_rules ps"
   and "kill ps prov ps'"
-  and "Unique_allocs ps"
-  and "\<exists>b. A ps prov = Some(loc, b)"
-shows "constant_alloc_ass ps'"
+shows " constant_alloc_ass ps'"
   using assms apply simp
-  apply clarify apply auto
-  apply (smt (z3) Compl_insert Diff_insert_absorb Pair_inject empty_iff fun_upd_same fun_upd_triv fun_upd_upd insertE insert_Diff insert_absorb insert_absorb insert_compr insert_ident insert_iff insert_iff mk_disjoint_insert ranI ran_map_upd restrict_complement_singleton_eq singletonI)
-  apply (metis (no_types, lifting) insert_iff ranI ran_restrictD restrict_complement_singleton_eq)
-  apply (metis ComplD insertCI option.sel ran_restrictD restrict_complement_singleton_eq)
-  apply (metis (no_types, lifting) insert_iff ranI ran_restrictD restrict_complement_singleton_eq)
-  apply (metis ComplD insertCI option.sel ran_restrictD restrict_complement_singleton_eq) 
-  by (smt (z3) Compl_insert Diff_insert_absorb Pair_inject empty_iff fun_upd_same fun_upd_triv fun_upd_upd insertE insert_Diff insert_absorb insert_absorb insert_compr insert_ident insert_iff insert_iff mk_disjoint_insert ranI ran_map_upd restrict_complement_singleton_eq singletonI)
-
-
-lemma allocation_preserves_uniqueness_sup_1:
-  assumes "prov \<notin> dom(A ps)"
-  and "constant_alloc_ass ps"
-  and "Unique_allocs ps"
-  and "isfree_addr loc ps"
-  and "allocate_object ps loc prov ps' typ"
-shows "constant_alloc_ass ps'"
-  using assms allocation_preserves_structure [where ps = ps and ps'=ps'] 
-  by blast
-
+  apply auto
+  apply (metis domIff fun_upd_apply old.prod.inject option.collapse ranI testingthisone)
+  apply (metis ranI ran_restrictD restrict_complement_singleton_eq)
+  by (metis ComplD domI fst_eqD insertCI option.sel ran_restrictD restrict_complement_singleton_eq)
+  
 lemma allocation_preserves_uniqueness:
-  assumes "prov \<notin> dom(A ps)"
-  and "constant_alloc_ass ps"
-  and "Unique_allocs ps"
-  and "isfree_addr loc ps"
+  assumes "psem_rules ps"
   and "allocate_object ps loc prov ps' typ"
 shows "Unique_allocs ps'"
   using assms apply simp
-  apply clarify apply auto prefer 2
-  apply (metis (no_types) insertI1 ranI)
-  by (metis (no_types) insertI1 ranI)
-
-lemma kill_preserves_uniqueness:
-  assumes "constant_alloc_ass ps"
-  and "kill ps prov ps'"
-  and "Unique_allocs ps"
-  and "\<exists>b. A ps prov = Some(loc, b)"
-shows "Unique_allocs ps'"
-  using assms apply simp
-  apply clarify apply auto 
-  by (metis option.discI)
+  apply clarify apply safe 
+  apply (metis fst_conv option.sel ranI) 
+  by (metis fst_conv option.sel ranI)
   
 
+lemma kill_preserves_uniqueness:
+  assumes "psem_rules ps"
+  and "kill ps prov ps'"
+shows "Unique_allocs ps'"
+  using assms by simp
 
+
+
+
+
+
+(*-----------------summary--------------------*)
+
+lemma psem_rules_preserved_alloc:
+"psem_rules ps \<Longrightarrow> allocate_object ps loc prov ps' typ \<Longrightarrow> psem_rules ps'"
+  unfolding psem_rules_def apply(intro conjI impI) 
+  using allocation_preserves_uniqueness psem_rules_def apply blast
+  using allocation_preserves_structure psem_rules_def by blast
+  
+
+lemma psem_rules_preserved_kill:
+"psem_rules ps \<Longrightarrow>  kill ps i ps' \<Longrightarrow> psem_rules ps'"
+  unfolding psem_rules_def apply(intro conjI impI)
+  using kill_preserves_uniqueness psem_rules_def apply blast
+  using kill_preserves_structure psem_rules_def by blast
+  
 
 end

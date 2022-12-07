@@ -289,8 +289,6 @@ definition "CAS t w cv nv' \<sigma> ts' \<equiv>
       else 
         (read_trans t False w \<sigma>, False)"
 
-definition "FAAZ t w \<sigma> ts' \<equiv> 
-        (update_trans t w (value \<sigma> w) \<sigma> ts', value \<sigma> w)"
 
 definition cas_step :: "T \<Rightarrow> L \<Rightarrow> V \<Rightarrow> V \<Rightarrow> surrey_state \<Rightarrow> surrey_state \<Rightarrow> bool"
   where
@@ -471,10 +469,6 @@ definition
       (\<forall> w. w \<in> writes \<sigma> \<longrightarrow> modView \<sigma> w (var w) = w) \<and>
       covered \<sigma> \<subseteq> writes \<sigma>"
 
-definition
-  "wfs_2 \<sigma> \<equiv>
-      wfs \<sigma> \<and> (\<forall> x. lastWr \<sigma> x \<notin> covered \<sigma>)"
-
 
 
 
@@ -489,6 +483,12 @@ definition "c_obs \<sigma> x u t y v \<equiv>
                          d_obs \<sigma> (modView \<sigma> w) y v \<and>
                          releasing \<sigma> w"
 
+(*new*)
+definition "c_obs_last \<sigma> x u t y v \<equiv> 
+                         value \<sigma> (lastWr \<sigma> x) = u \<longrightarrow> 
+                         d_obs \<sigma> (modView \<sigma> (lastWr \<sigma> x)) y v \<and>
+                         releasing \<sigma> (lastWr \<sigma> x)"
+
 abbreviation p_obs_abbr:: "nat  \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow>  surrey_state \<Rightarrow> bool" ("[_ \<approx>\<^sub>_ _] _" [100, 100, 100, 100])
   where "[x \<approx>\<^sub>t u] \<sigma> \<equiv> p_obs \<sigma> t x u"
 
@@ -499,10 +499,12 @@ abbreviation c_obs_abbr:: "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow>
   where "[x = u]\<^sub>t\<lparr>y = v\<rparr> \<sigma> \<equiv> c_obs \<sigma> x u t y v"
 
 
+
+
 definition "covered_v \<sigma> x v \<equiv> \<forall> w .  w \<in> writes_on \<sigma> x \<and> w \<notin> covered \<sigma> \<longrightarrow> w = lastWr \<sigma> x \<and> value \<sigma> w = v"
 
 abbreviation covered_v_abbr:: "L \<Rightarrow> V  \<Rightarrow> surrey_state \<Rightarrow> bool" ("cvd[_, _] _" [100, 100,100])
-  where "cvd[x, u] \<sigma> \<equiv> covered_v \<sigma> x u"
+  where "cvd[x, u] \<sigma> \<equiv> covered_v \<sigma> x u" 
 
 
 definition "mo w w'\<equiv> var(w) = var(w') \<and> tst(w) < tst(w')" 
@@ -574,12 +576,6 @@ lemma initial_wfs: assumes "initial_state \<sigma> I"  shows "wfs \<sigma>"
   apply (smt CollectD Pair_inject assms initial_state_def)
   using assms initial_state_def by fastforce
 
-lemma initial_wfs_2: assumes "initial_state \<sigma> I"  shows "wfs_2 \<sigma>"
-  apply(simp add: wfs_2_def)
-  apply(rule conjI)
-  using assms initial_wfs apply blast
-  using assms apply (simp add: initial_state_def)
-  by blast
 
 
 

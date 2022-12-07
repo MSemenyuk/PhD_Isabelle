@@ -133,6 +133,7 @@ lemma wfs_preserved:
   using assms(1) wfs_def apply blast apply simp
   using assms(1) wfs_def by blast
 
+(*
 lemma wfs_2_preserved:
   assumes "wfs_2 \<sigma>"
       and "step t a \<sigma> \<sigma>'"
@@ -155,9 +156,10 @@ lemma wfs_2_preserved:
   apply (simp add: visible_writes_def update_mods_def update_modView_def )
    apply (unfold writes_on_def wfs_2_def wfs_def)
    apply safe
-   apply (simp add: fst_def tst_def snd_def)
-  sorry
-
+    apply (simp add: fst_def tst_def snd_def)
+  
+  oops
+*)
 
 
 
@@ -183,8 +185,8 @@ lemma write_to_different_var [simp]: "wfs \<sigma> \<Longrightarrow> var w \<not
 
 lemma [simp]: "wfs \<sigma> \<Longrightarrow> w = (lastWr \<sigma> x) \<Longrightarrow> valid_fresh_ts \<sigma> w ts' \<Longrightarrow>
                     lastWr (write_trans t b w v \<sigma> ts') x = (x, ts')"
-  apply (simp add: valid_fresh_ts_def)
-  by (simp add: lastWr_def max.strict_order_iff)
+  apply (simp add: valid_fresh_ts_def) 
+  by (simp add: lastWr_def)
 
 lemma [simp]: "wfs \<sigma> \<Longrightarrow> w \<noteq> lastWr \<sigma> x \<Longrightarrow> w \<in> writes_on \<sigma> x \<Longrightarrow> valid_fresh_ts \<sigma> w ts' \<Longrightarrow>
                     lastWr (write_trans t b w v \<sigma> ts') x = lastWr \<sigma> x"
@@ -199,7 +201,7 @@ lemma [simp]: " wfs \<sigma> \<Longrightarrow> var w \<noteq> x \<Longrightarrow
 
 lemma [simp]: "wfs \<sigma> \<Longrightarrow> w = lastWr \<sigma> x \<Longrightarrow> valid_fresh_ts \<sigma> w ts' \<Longrightarrow>lastWr (update_trans t w v' \<sigma> ts') x = (x, ts')"
   apply (subst lastWr_def) apply simp
-  by (simp add: lastWr_def less_eq_rat_def max.absorb1 valid_fresh_ts_def)
+  by (simp add: lastWr_def less_eq_rat_def valid_fresh_ts_def) 
 
 lemma [simp]: "wfs \<sigma> \<Longrightarrow> w \<noteq> lastWr \<sigma> x \<Longrightarrow> w \<in> writes_on \<sigma> x \<Longrightarrow> valid_fresh_ts \<sigma> w ts' \<Longrightarrow>
                     lastWr (update_trans t w v' \<sigma> ts') x = lastWr \<sigma> x"
@@ -242,6 +244,7 @@ lemma d_obs_p_obs_agree: "wfs \<sigma> \<Longrightarrow> [x =\<^sub>t u] \<sigma
 
 lemma not_p_obs_implies_c_obs: "\<not> [x \<approx>\<^sub>t u] \<sigma> \<Longrightarrow> [x = u]\<^sub>t\<lparr>y = v\<rparr> \<sigma>"
   by(auto simp add: p_obs_def c_obs_def)
+
 
 
 
@@ -485,12 +488,21 @@ shows "c_obs \<sigma>' x u t' y v"
   by(simp add: releasing_def)
 
 
+
+
+
+
+
 corollary c_obs_WrR_intro: 
   "wfs \<sigma> \<Longrightarrow> x \<noteq> y \<Longrightarrow> t' \<noteq> t 
    \<Longrightarrow> [y =\<^sub>t v] \<sigma> \<Longrightarrow> \<not> [x \<approx>\<^sub>t' u] \<sigma>  
    \<Longrightarrow> \<sigma> [x :=\<^sup>R u]\<^sub>t \<sigma>'
    \<Longrightarrow> [x = u]\<^sub>t'\<lparr>y = v\<rparr> \<sigma>'"
   by (metis WrR_def avar.simps(2) c_obs_Wr_intro isRA.simps(2) isWr.simps(2) wr_val.simps(1))
+
+
+
+
 
 
 
@@ -508,7 +520,7 @@ shows "c_obs \<sigma>' x u t' y v"
   apply(rule step_cases[OF assms(8)]) 
   using as2 apply auto[1]  
   using as4 apply auto[1] 
-  using assms apply safe
+  using assms apply safe 
 proof -
   fix aa b xa va v' ts'
   assume a1: "wfs \<sigma>" and
@@ -2311,13 +2323,5 @@ shows "v = u"
 
 
 
-lemma cvd_FAAZ:
-  assumes "wfs \<sigma> "
-  and "cvd[(var w),u] \<sigma>"
-  and "valid_fresh_ts \<sigma> w ts'"
-  and "w \<in> visible_writes \<sigma> t (var w)"
-  and "\<sigma>' = update_trans t w u \<sigma> ts'" 
-shows "cvd[(var w),u] \<sigma>'"
-  using assms 
-  oops
+
 end
