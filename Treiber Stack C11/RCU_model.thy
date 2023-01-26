@@ -12,7 +12,7 @@ datatype PC = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | I9 | I10 | I11 | I12 | I13
 
 consts rcu_0 ::address (*first location of rcu array*)
 consts F::nat
-consts T_max::nat (*max_thread ID - 1*)
+consts T_max::nat (*max_thread ID + 1*)
 consts C :: nat     (*just referred to by its location in A(1) = (C,pointer) where C = nat*)
 consts casloc :: nat
 definition "set_T \<equiv> {n . n\<ge>0 \<and> n<T_max}"
@@ -451,6 +451,18 @@ definition "sptr_true_imp ms ps \<equiv> \<forall>t . (s_dec ms t = True \<and> 
 
 
 
+lemma testingthisonebecauseofreasons:
+  "Rcap ms t (detaddrs ms t) \<Longrightarrow> 
+  Wcap ms t (detaddrs ms t) \<Longrightarrow>
+Rcap ms t' (detaddrs ms t') \<Longrightarrow>
+t\<noteq>t' \<Longrightarrow>
+2 \<notin> detaddrs ms t \<Longrightarrow>
+ Wcap ms t' (detaddrs ms t') \<Longrightarrow>
+ms' = ms \<lparr> s := (s ms) (t := Some 2),
+                       pc := (pc ms) (t := I9),
+                     own\<^sub>R := (own\<^sub>R ms) (2:= own\<^sub>R ms 2 \<union> {t})\<rparr>
+\<Longrightarrow> Rcap ms' t' (detaddrs ms' t') 
+" by (simp add:Rcap_def)
 
 
 
@@ -2032,6 +2044,27 @@ lemma S6_corr_val_preserves_post_sc_4:
   by (metis RdX_def action.simps(7))
 
 (*the S6 and S3 dependencies MIGHT need revisiting*)
+
+
+
+
+
+
+
+
+(*-------------------------------------------------------------*)
+(*-------------------------------------------------------------*)
+(*-----------------RCU free(pop(det)) stuff--------------------*)
+(*-------------------------------------------------------------*)
+(*-------------------------------------------------------------*)
+
+
+
+
+
+
+
+
 
 
 

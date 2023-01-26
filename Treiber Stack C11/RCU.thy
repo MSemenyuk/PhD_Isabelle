@@ -76,10 +76,10 @@ definition "reserved_bydef ps \<equiv> \<forall>i. i\<in>default_locs \<longrigh
 
 definition "reservations_differ \<equiv> \<forall>i. i<T_max \<longrightarrow> C\<noteq>rcu_0+i"
 
-definition "counters_limit ms \<equiv> \<forall>t. t<T_max \<longrightarrow> CTRsync\<^sub>1 ms t \<le>t \<and> CTRsync\<^sub>2 ms t \<le>t"
+definition "counters_limit ms \<equiv> \<forall>t. t<T_max \<longrightarrow> CTRsync\<^sub>1 ms t \<le>T_max \<and> CTRsync\<^sub>2 ms t \<le>T_max"
 
 definition "con_assms ms ps \<equiv> reserved_bydef ps \<and> reservations_differ \<and> counters_limit ms "
-
+                                    
 lemmas con_assms_lemmas [simp] = reserved_bydef_def reservations_differ_def
                                  default_locs_def counters_limit_def
 
@@ -312,7 +312,7 @@ lemma main_invariant_2_preservation:
   apply simp 
   apply(simp add: step_def preCond_def)
   apply(case_tac "pc ms t", simp_all)
-  apply(simp add:abbr main_inv_lemmas)
+  apply(simp add:abbr main_inv_lemmas) 
   apply(simp add:abbr main_inv_lemmas)
   apply(simp add:abbr main_inv_lemmas)
   apply(simp add:new_int_def)
@@ -388,7 +388,6 @@ lemma main_invariant_2_preservation:
   apply(simp add:rcu_temp_copy_def main_inv_lemmas)
   apply clarify
   by(simp add:observation_inv_sig_def observation_inv_ms_def)
-
 
 
 
@@ -616,7 +615,7 @@ lemma allocated_addresses_preservation:
   apply(subgoal_tac "tl (det ms t) ! ia = (det ms t) ! (ia+1)") prefer 2
   apply (metis One_nat_def Suc_eq_plus1 length_tl nth_tl) 
   apply(simp add:det_differ_from_det_def det_differ_inside_def) 
-  apply (metis con_assms_def counters_limit_def leD)
+  apply (metis (no_types, lifting) Suc_less_eq Suc_pred length_greater_0_conv)
   apply(simp add:abbr allocated_addresses_lemmas)
   apply(case_tac "CTRsync\<^sub>1 ms t < T_max", simp_all)
   apply(case_tac " CTRsync\<^sub>1 ms t = t", simp_all)
@@ -994,8 +993,7 @@ lemma own\<^sub>W_n_by_t_imp_preservation:
   apply(case_tac "r ms t (CTRsync\<^sub>2 ms t) = 0", simp_all)
   apply(simp add:abbr own\<^sub>W_n_by_t_imp_def) 
   apply(simp add:abbr own\<^sub>W_n_by_t_imp_def) 
-  apply(simp add:abbr own\<^sub>W_n_by_t_imp_def)
-  apply (metis con_assms_def counters_limit_def leD)
+  apply(simp add:abbr own\<^sub>W_n_by_t_imp_def) defer
   apply(simp add:abbr own\<^sub>W_n_by_t_imp_def) 
   apply(case_tac "reg ms t = Suc 0", simp_all)
   apply(simp add:abbr own\<^sub>W_n_by_t_imp_def) 
@@ -1009,7 +1007,9 @@ lemma own\<^sub>W_n_by_t_imp_preservation:
   apply(case_tac "ya", simp_all)
   apply (metis (no_types, lifting) general_structure_def n_differ_from_s_inside_def n_differ_from_s_outside_def option.sel)
   apply(simp add:abbr own\<^sub>W_n_by_t_imp_def Rcap_def)   (*free[pop[detached[t]]]*)
-  by (metis con_assms_def counters_limit_def leD)
+  apply (meson general_structure_def length_greater_0_conv n_differ_from_det_def)
+  apply clarify
+  by(simp add:OpSem.step_def)
 
   
 
@@ -1435,10 +1435,10 @@ lemma general_structure_preservation:
   apply(simp add:n_differ_from_s_outside_def) apply auto[1]
   apply(simp add:n_differ_from_s_inside_def) 
   apply(simp add:s_differ_from_det_inside_def) apply auto[1]
+  apply(simp add:n_differ_from_det_def)
+  apply(simp add:n_differ_from_det_def)
+  apply(simp add:n_differ_from_det_def)
   apply(simp add:n_differ_from_det_def) 
-  apply (metis con_assms_def counters_limit_def leD)
-  apply (metis con_assms_def counters_limit_def leD)
-  apply (simp add: n_differ_from_det_def)
   apply(simp add:det_differ_from_det_def)
   apply(simp add:det_differ_inside_def)
   apply(simp add:own\<^sub>W_and_det_things_def)
@@ -1450,9 +1450,10 @@ lemma general_structure_preservation:
   apply(simp add:n_differ_from_s_inside_def) 
   apply(simp add:s_differ_from_det_inside_def) apply auto[1]
   apply(simp add:n_differ_from_det_def) 
-  apply (metis con_assms_def counters_limit_def leD)
-  apply (metis con_assms_def counters_limit_def leD)
-  apply (simp add: n_differ_from_det_def)
+  apply(simp add:n_differ_from_s_outside_def)
+  apply(simp add:n_differ_from_det_def) 
+  apply(simp add:n_differ_from_det_def) 
+  apply(simp add:n_differ_from_det_def) 
   apply(simp add:det_differ_from_det_def)
   apply(simp add:det_differ_inside_def)
   apply(simp add:own\<^sub>W_and_det_things_def)
@@ -1567,13 +1568,14 @@ lemma general_structure_preservation:
   apply(simp add:n_differ_from_s_inside_def) 
   apply(simp add:s_differ_from_det_inside_def) apply auto[1]
   apply(simp add:n_differ_from_det_def) 
-  apply (metis con_assms_def counters_limit_def leD)
-  apply(simp add:det_differ_from_det_def)
-  apply (metis con_assms_def counters_limit_def leD)
-  apply(simp add:det_differ_inside_def)
-  apply (metis con_assms_def counters_limit_def leD)
+  apply (smt (z3) One_nat_def diff_less length_greater_0_conv length_tl lessI less_trans_Suc nth_tl)
+  apply(simp add:det_differ_from_det_def) 
+  apply (simp add: less_diff_conv nth_tl)
+  apply(simp add:det_differ_inside_def) 
+  apply (simp add: less_diff_conv nth_tl)
   apply(simp add:own\<^sub>W_and_det_things_def)
-  apply (metis con_assms_def counters_limit_def leD)
+  apply (simp add: less_diff_conv nth_tl)
+  apply (metis (no_types, lifting) Nitpick.size_list_simp(2) Suc_less_eq det_differ_from_det_def det_differ_inside_def length_greater_0_conv nat.distinct(1) nth_tl)
 (*r[N]:={0}*)
   apply(simp add: abbr general_structure_def preCond_def)
   apply(intro conjI impI)
@@ -1776,11 +1778,9 @@ lemma Local_Correctness_preservation:
   apply(simp add:abbr Rcap_def Wcap_def) apply clarsimp
   apply(simp add:abbr Rcap_def Wcap_def) apply clarsimp
   apply(case_tac "det ms t \<noteq> [] ", simp_all)
+  apply(simp add:abbr Rcap_def Wcap_def) apply clarsimp defer
   apply(simp add:abbr Rcap_def Wcap_def) apply clarsimp
-  apply (metis con_assms_def counters_limit_def leD)
-  apply(simp add:abbr Rcap_def Wcap_def) apply clarsimp
-  apply(simp add:abbr Rcap_def Wcap_def) apply clarsimp
-  apply (metis con_assms_def counters_limit_def leD)
+  apply(simp add:abbr Rcap_def Wcap_def) apply clarsimp defer
   apply(simp add:abbr Rcap_def Wcap_def) apply clarsimp
   apply(case_tac "CTRsync\<^sub>1 ms t < T_max", simp_all)
   apply(simp add:abbr Rcap_def Wcap_def) apply clarsimp
@@ -1804,15 +1804,21 @@ lemma Local_Correctness_preservation:
   apply(case_tac "ya", simp_all)
   apply(simp add:abbr Rcap_def Wcap_def) apply clarsimp
   apply (metis general_structure_def less_nat_zero_code list.size(3) n_differ_from_det_def)
-  apply(simp add:abbr Rcap_def Wcap_def) 
+  apply(simp add:abbr Rcap_def Wcap_def) defer defer
 (*dealing with r[i]:=rcu[counter]*)
   apply(simp add:load_rcu_to_r_def) apply clarsimp
   apply(simp add:abbr Rcap_def Wcap_def)
 (*dealing with rcu_temp_copy*)
   apply(simp add:rcu_temp_copy_def)
   apply clarsimp 
-  by(simp add:abbr Rcap_def Wcap_def) 
-
+  apply(simp add:abbr Rcap_def Wcap_def) defer
+  apply(intro conjI impI)
+  apply (simp add: det_differ_inside_def general_structure_def nth_tl)
+  apply(subgoal_tac "\<forall>j. j<length(det ms t) \<longrightarrow> own\<^sub>W ms (det ms t!j) = Some t") prefer 2 
+  apply blast
+  apply safe
+  sledgehammer
+  sorry
 (*--------------------------------------------------------------------*)
 
 

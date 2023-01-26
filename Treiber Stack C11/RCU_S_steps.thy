@@ -1,0 +1,377 @@
+theory RCU_S_steps
+  imports RCU_model
+begin
+
+
+(*datatype PC = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | I9 | I10 | I11 | I12 | I13 | I14 |  cas_res | finished
+            | R1 | R2 | R3 | R4 | R5 
+            | S1 | S2 | S3 | S4 | S5 | S6 | S7 *)
+
+
+
+(*
+(\<forall> x. lastWr \<sigma> x \<notin> covered \<sigma>)"
+*)
+
+(*the following must be included in the proof:
+
+con_assms ps                            assumed         --- concerns allocation/bounds of C and rcu_0+i for all i
+
+main_inv ms                             *done*          --- main invariant has 3 parts
+psem_rules ps                           *done*          --- how allocation works on the inside
+allocated_addresses ms ps               *done*          --- allocation for above are defined here
+simple - observation_inv_ms ms          *done*          --- how own\<^sub>W affects loc status (own\<^sub>W loc = t \<longrightarrow> loc\<in>{s,n,det} t)
+hard   - observation_inv_sig ms ps \<sigma>    **          --- limits which values can be WM_read from C
+simple - own\<^sub>W_n_by_t_imp ms             **          --- related own\<^sub>W of n to n_dec and n (value)
+tedious - general_structure ms          **          --- says how n \<noteq> s \<noteq> detaddrs
+local - preCond ms ps \<sigma> (pc ms t) t     **          --- defines preconditions for t to proceed with stepping      
+global - preCond ms ps \<sigma> (pc ms ta) ta  **          --- defines preconditions for t to proceed with stepping      
+
+local  - weak_mem (pre/in/post block) (t ta)
+global - weak_mem (pre/in/post block) (ta t)
+
+
+
+
+
+*)
+definition  "S_steps \<equiv> {i. i=S1 \<or> i=S2 \<or> i=S3 \<or> i=S4 \<or> i=S5 \<or> i=S6 \<or> i=S7}"
+lemmas step_breakdown [simp] = S_steps_def
+
+definition "default_locs \<equiv> {i | i a. i=C \<or> i = rcu_0+a \<and> a<T_max }"
+definition "reserved_bydef ps \<equiv> \<forall>i. i\<in>default_locs \<longrightarrow> \<not>isfree_addr i ps"
+definition "reservations_differ \<equiv> \<forall>i. i<T_max \<longrightarrow> C\<noteq>rcu_0+i"
+definition "counters_limit ms \<equiv> \<forall>t. t<T_max \<longrightarrow> CTRsync\<^sub>1 ms t \<le>T_max \<and> CTRsync\<^sub>2 ms t \<le>T_max"
+definition "con_assms ms ps \<equiv> reserved_bydef ps \<and> reservations_differ \<and> counters_limit ms "
+                                    
+lemmas con_assms_lemmas [simp] = reserved_bydef_def reservations_differ_def
+                                 default_locs_def counters_limit_def
+
+
+
+
+lemma showing_observation_inv_sig_for_S:
+ "main_inv ms ps \<Longrightarrow> 
+  con_assms ms ps \<Longrightarrow>
+  wfs_2 \<sigma> \<Longrightarrow>
+  cvd[C,l] \<sigma> \<Longrightarrow>
+  t<T_max \<Longrightarrow>
+  pc ms t \<in> S_steps \<Longrightarrow>
+  step ms ps \<sigma> (pc ms t) t ms' ps' \<sigma>' \<Longrightarrow> 
+  preCond ms ps \<sigma> (pc ms t) t \<Longrightarrow> 
+  general_structure ms \<Longrightarrow>
+  allocated_addresses ms ps \<Longrightarrow>
+  psem_rules ps \<Longrightarrow>
+  own\<^sub>W_n_by_t_imp ms \<Longrightarrow>
+  observation_inv_ms ms \<Longrightarrow>
+  observation_inv_sig ms ps \<sigma> \<Longrightarrow>
+  observation_inv_sig ms' ps' \<sigma>'" 
+  apply (simp, safe; clarsimp)
+  apply(simp add:observation_inv_sig_def step_def abbr)
+  apply(simp add:observation_inv_sig_def step_def abbr)
+  apply clarify
+  apply(case_tac "CTRsync\<^sub>1 ms t < T_max") prefer 2 apply simp
+  apply(simp add:observation_inv_sig_def step_def abbr)
+  apply blast
+  apply(case_tac "CTRsync\<^sub>1 ms t = t", simp_all add:abbr)
+  apply blast
+  apply blast
+  apply(simp add:observation_inv_sig_def step_def abbr)
+  apply auto[1] 
+  apply(subgoal_tac "loc \<noteq> l") prefer 2
+  apply blast
+  apply(simp add:OpSem.step_def wfs_2_def) apply auto[1]
+  using OpSem.step_def not_cvd_RdX_pres apply blast
+  apply(simp add:OpSem.step_def wfs_2_def) apply auto[1]
+  using OpSem.step_def not_cvd_RdX_pres apply blast
+  apply(simp add:observation_inv_sig_def step_def abbr)
+  apply(case_tac "CTRsync\<^sub>2 ms t < T_max", simp_all add:abbr)
+  apply(simp add:step_def)
+  apply(case_tac "r ms t (CTRsync\<^sub>2 ms t) = 0") prefer 2 apply simp
+  apply(simp add:observation_inv_sig_def step_def abbr)
+  apply(simp add:abbr)
+  unfolding observation_inv_sig_def apply simp
+  prefer 2
+  unfolding step_def
+  apply(case_tac "reg ms t = 1", simp_all add:abbr) (*last 1, S6, load(rcu)*)
+  apply(simp add:step_def abbr OpSem.step_def wfs_2_def)
+  apply auto[1] 
+  using OpSem.step_def not_cvd_RdX_pres apply blast
+  apply(simp add:RdX_def) apply(simp add:con_assms_def)
+  apply(subgoal_tac "loc \<noteq> l") prefer 2
+  apply blast
+  apply(subgoal_tac "isfree_addr loc ps") prefer 2
+  apply (meson isfree_addr_def)
+  apply(subgoal_tac "isfree_addr loc ps'") prefer 2
+  apply blast 
+  apply(simp add:preCond_def)
+  sorry
+
+
+
+
+
+lemma showing_main_inv_1_for_S:
+ "main_inv ms ps \<Longrightarrow> 
+  wfs_2 \<sigma> \<Longrightarrow>
+  cvd[C,l] \<sigma> \<Longrightarrow>
+  t<T_max \<Longrightarrow>
+  pc ms t \<in> S_steps \<Longrightarrow>
+  step ms ps \<sigma> (pc ms t) t ms' ps' \<sigma>' \<Longrightarrow> 
+  preCond ms ps \<sigma> (pc ms t) t \<Longrightarrow> 
+  general_structure ms \<Longrightarrow>
+  psem_rules ps \<Longrightarrow>
+  own\<^sub>W_n_by_t_imp ms \<Longrightarrow>
+  observation_inv_sig ms ps \<sigma> \<Longrightarrow>
+  main_inv_1 ms'"
+  apply (simp, safe; clarsimp)
+  apply(simp_all add:main_inv_1_def step_def setup_r_def)
+  apply (metis main_inv_1_def main_inv_def option.distinct(1))
+  apply(simp add:preCond_def)
+  apply(case_tac "CTRsync\<^sub>1 ms t < T_max", simp_all)
+  apply(case_tac "CTRsync\<^sub>1 ms t = t", simp_all add:abbr)
+  apply (simp add: main_inv_1_def main_inv_def)
+  apply (simp add: main_inv_1_def main_inv_def)
+  apply (simp add: main_inv_1_def main_inv_def)
+  apply (simp add: main_inv_1_def main_inv_def)
+  apply(simp add:preCond_def OpSem.step_def general_structure_def)
+  apply clarify apply auto
+  apply(case_tac "CTRsync\<^sub>2 ms t < T_max", simp_all add:abbr)
+  apply (metis main_inv_1_def main_inv_def option.discI option.sel singletonD)
+  apply (metis main_inv_1_def main_inv_def option.distinct(1) option.sel singleton_iff)
+  apply(case_tac "CTRsync\<^sub>2 ms t < T_max", simp_all add:abbr)
+  apply (metis main_inv_1_def main_inv_def option.discI option.sel singletonI)
+  apply (metis main_inv_1_def main_inv_def option.discI option.sel singletonI)
+  apply(case_tac "r ms t (CTRsync\<^sub>2 ms t) = 0", simp_all add:abbr)
+  apply (metis main_inv_1_def main_inv_def option.distinct(1) option.sel singleton_iff)
+  apply (metis empty_iff insert_iff main_inv_1_def main_inv_def option.distinct(1) option.sel)
+  apply(case_tac "r ms t (CTRsync\<^sub>2 ms t) = 0", simp_all add:abbr)
+  apply (metis main_inv_1_def main_inv_def option.distinct(1) option.sel singleton_iff)
+  apply (metis insert_iff main_inv_1_def main_inv_def option.distinct(1) option.sel)
+  apply (metis main_inv_1_def main_inv_def option.distinct(1) option.sel singletonD)
+  apply (metis main_inv_1_def main_inv_def option.discI option.sel singletonI)
+  apply(case_tac "reg ms t = Suc 0", simp_all add:abbr)
+  apply (metis main_inv_1_def main_inv_def option.distinct(1) option.sel singleton_iff)
+  apply (smt (verit) Collect_conv_if2 main_inv_1_def main_inv_def mem_Collect_eq option.distinct(1) option.sel)
+  apply(case_tac "reg ms t = Suc 0", simp_all add:abbr)
+  apply (metis main_inv_1_def main_inv_def option.distinct(1) option.sel singletonI)
+  by (meson main_inv_3_def main_inv_def own\<^sub>W_n_by_t_imp_def)
+
+
+lemma showing_main_inv_2_for_S:
+ "main_inv ms ps \<Longrightarrow> 
+  wfs_2 \<sigma> \<Longrightarrow>
+  cvd[C,l] \<sigma> \<Longrightarrow>
+  t<T_max \<Longrightarrow>
+  pc ms t \<in> S_steps \<Longrightarrow>
+  step ms ps \<sigma> (pc ms t) t ms' ps' \<sigma>' \<Longrightarrow> 
+  preCond ms ps \<sigma> (pc ms t) t \<Longrightarrow> 
+  general_structure ms \<Longrightarrow>
+  psem_rules ps \<Longrightarrow>
+  own\<^sub>W_n_by_t_imp ms \<Longrightarrow>
+  observation_inv_ms ms \<Longrightarrow>
+  observation_inv_sig ms ps \<sigma> \<Longrightarrow>
+  main_inv_2 ms' ps'"
+  apply(simp, safe; simp_all)
+  apply(simp_all add:step_def)
+  apply(simp_all add:main_inv_2_def abbr main_inv_def)
+  apply(case_tac "CTRsync\<^sub>1 ms t < T_max", simp_all)
+  apply(case_tac "CTRsync\<^sub>1 ms t = t", simp_all add:abbr) defer
+  apply(case_tac "CTRsync\<^sub>2 ms t < T_max", simp_all add:abbr)
+  apply(case_tac "r ms t (CTRsync\<^sub>2 ms t) = 0", simp_all add:abbr) defer
+  apply(case_tac "reg ms t = Suc 0", simp_all add:abbr)
+  by auto
+
+
+
+lemma showing_main_inv_3_for_S:
+ "main_inv ms ps \<Longrightarrow> 
+  wfs_2 \<sigma> \<Longrightarrow>
+  cvd[C,l] \<sigma> \<Longrightarrow>
+  t<T_max \<Longrightarrow>
+  pc ms t \<in> S_steps \<Longrightarrow>
+  step ms ps \<sigma> (pc ms t) t ms' ps' \<sigma>' \<Longrightarrow> 
+  preCond ms ps \<sigma> (pc ms t) t \<Longrightarrow> 
+  general_structure ms \<Longrightarrow>
+  psem_rules ps \<Longrightarrow>
+  own\<^sub>W_n_by_t_imp ms \<Longrightarrow>
+  observation_inv_ms ms \<Longrightarrow>
+  observation_inv_sig ms ps \<sigma> \<Longrightarrow>
+  main_inv_3 ms' ps'"
+  apply(simp, safe; simp_all)
+  apply(simp_all add:step_def)
+  apply(simp_all add:main_inv_3_def abbr main_inv_def)
+  apply(case_tac "CTRsync\<^sub>1 ms t < T_max", simp_all)
+  apply(case_tac "CTRsync\<^sub>1 ms t = t", simp_all add:abbr) defer
+  apply(case_tac "CTRsync\<^sub>2 ms t < T_max", simp_all add:abbr)
+  apply(case_tac "r ms t (CTRsync\<^sub>2 ms t) = 0", simp_all add:abbr) defer
+  apply(case_tac "reg ms t = Suc 0", simp_all add:abbr)
+  by auto
+
+
+
+lemma showing_main_inv_for_S:
+ "main_inv ms ps \<Longrightarrow> 
+  wfs_2 \<sigma> \<Longrightarrow>
+  cvd[C,l] \<sigma> \<Longrightarrow>
+  t<T_max \<Longrightarrow>
+  pc ms t \<in> S_steps \<Longrightarrow>
+  step ms ps \<sigma> (pc ms t) t ms' ps' \<sigma>' \<Longrightarrow> 
+  preCond ms ps \<sigma> (pc ms t) t \<Longrightarrow> 
+  general_structure ms \<Longrightarrow>
+  psem_rules ps \<Longrightarrow>
+  own\<^sub>W_n_by_t_imp ms \<Longrightarrow>
+  observation_inv_ms ms \<Longrightarrow>
+  observation_inv_sig ms ps \<sigma> \<Longrightarrow>
+  main_inv ms' ps'"
+  apply(subgoal_tac "main_inv_1 ms' \<and> main_inv_2 ms' ps' \<and> main_inv_3 ms' ps'")
+  apply(simp add:main_inv_def)
+  apply(intro conjI impI)
+  using showing_main_inv_1_for_S apply blast
+  using showing_main_inv_2_for_S apply blast
+  using showing_main_inv_3_for_S by blast
+
+
+
+
+
+
+lemma showing_psem_rules_for_S:
+ "main_inv ms ps \<Longrightarrow> 
+  wfs_2 \<sigma> \<Longrightarrow>
+  cvd[C,l] \<sigma> \<Longrightarrow>
+  t<T_max \<Longrightarrow>
+  pc ms t \<in> S_steps \<Longrightarrow>
+  step ms ps \<sigma> (pc ms t) t ms' ps' \<sigma>' \<Longrightarrow> 
+  preCond ms ps \<sigma> (pc ms t) t \<Longrightarrow> 
+  general_structure ms \<Longrightarrow>
+  allocated_addresses ms ps \<Longrightarrow>
+  psem_rules ps \<Longrightarrow>
+  own\<^sub>W_n_by_t_imp ms \<Longrightarrow>
+  observation_inv_ms ms \<Longrightarrow>
+  observation_inv_sig ms ps \<sigma> \<Longrightarrow>
+  psem_rules ps'" 
+  apply(simp, safe; simp_all)
+  apply(simp_all add: step_def abbr)
+  apply (metis domI fst_conv option.sel)
+  apply blast+
+  apply(case_tac "CTRsync\<^sub>1 ms t < T_max", simp_all add:abbr)
+  apply(case_tac "CTRsync\<^sub>1 ms t = t", simp_all add:abbr)
+  apply (metis domI fst_eqD option.sel)
+  apply (metis domI fst_conv option.sel)
+  apply (metis domI fst_conv option.sel)
+  apply(case_tac "CTRsync\<^sub>1 ms t < T_max", simp_all add:abbr)
+  apply(case_tac "CTRsync\<^sub>1 ms t = t", simp_all add:abbr)
+  apply(case_tac "CTRsync\<^sub>1 ms t < T_max", simp_all add:abbr)
+  apply(case_tac "CTRsync\<^sub>1 ms t = t", simp_all add:abbr)
+  apply blast
+  apply blast
+  apply blast apply auto[1]
+  apply (metis domI fst_conv option.sel)
+  apply blast
+  apply(case_tac "CTRsync\<^sub>2 ms t < T_max", simp_all add:abbr) apply auto[1]
+  apply (metis domI fst_conv option.sel)
+  apply (metis domI fst_conv option.sel)
+  apply(case_tac "CTRsync\<^sub>2 ms t < T_max", simp_all add:abbr)
+  apply(case_tac "CTRsync\<^sub>2 ms t < T_max", simp_all add:abbr)
+  apply blast
+  apply blast
+  apply(case_tac "r ms t (CTRsync\<^sub>2 ms t) = 0", simp_all add:abbr)
+  apply (metis domI fst_eqD option.sel)
+  apply (metis domI fst_eqD option.sel)
+  apply(case_tac "r ms t (CTRsync\<^sub>2 ms t) = 0", simp_all add:abbr)
+  apply(case_tac "r ms t (CTRsync\<^sub>2 ms t) = 0", simp_all add:abbr)
+  apply blast
+  apply blast
+  apply auto[1] 
+  apply (metis domI eq_fst_iff option.sel)
+  apply blast
+  apply(case_tac "reg ms t = Suc 0", simp_all add:abbr)
+  apply (metis domI fst_eqD option.sel)
+  apply (metis domI fst_eqD option.sel)
+  apply(case_tac "reg ms t = Suc 0", simp_all add:abbr)
+  apply(case_tac "reg ms t = Suc 0", simp_all add:abbr)
+  apply blast
+  by blast
+
+
+
+
+
+lemma showing_allocated_addresses_for_S:
+ "main_inv ms ps \<Longrightarrow> 
+  wfs_2 \<sigma> \<Longrightarrow>
+  cvd[C,l] \<sigma> \<Longrightarrow>
+  t<T_max \<Longrightarrow>
+  pc ms t \<in> S_steps \<Longrightarrow>
+  step ms ps \<sigma> (pc ms t) t ms' ps' \<sigma>' \<Longrightarrow> 
+  preCond ms ps \<sigma> (pc ms t) t \<Longrightarrow> 
+  general_structure ms \<Longrightarrow>
+  allocated_addresses ms ps \<Longrightarrow>
+  psem_rules ps \<Longrightarrow>
+  own\<^sub>W_n_by_t_imp ms \<Longrightarrow>
+  observation_inv_ms ms \<Longrightarrow>
+  observation_inv_sig ms ps \<sigma> \<Longrightarrow>
+  allocated_addresses ms' ps'" 
+  apply(simp, safe; simp_all)
+  apply(simp add:allocated_addresses_lemmas step_def abbr)
+  apply(simp add:allocated_addresses_lemmas step_def abbr)
+  apply(case_tac "CTRsync\<^sub>1 ms t < T_max", simp_all add:abbr)
+  apply(case_tac "CTRsync\<^sub>1 ms t = t", simp_all add:abbr)
+  apply(simp add:allocated_addresses_lemmas step_def abbr)
+  apply auto[1] apply blast 
+  apply(simp add:allocated_addresses_lemmas step_def abbr)
+  apply(case_tac "CTRsync\<^sub>2 ms t < T_max", simp_all add:abbr)
+  apply(simp add:allocated_addresses_lemmas step_def abbr)
+  apply(case_tac "r ms t (CTRsync\<^sub>2 ms t) = 0", simp_all add:abbr)
+  apply(simp add:allocated_addresses_lemmas step_def abbr)
+  apply auto[1] apply blast 
+  apply(simp add:allocated_addresses_lemmas step_def abbr)
+  by(case_tac "reg ms t = Suc 0", simp_all add:abbr)
+
+
+
+lemma showing_observation_inv_ms_for_S:
+ "main_inv ms ps \<Longrightarrow> 
+  wfs_2 \<sigma> \<Longrightarrow>
+  cvd[C,l] \<sigma> \<Longrightarrow>
+  t<T_max \<Longrightarrow>
+  pc ms t \<in> S_steps \<Longrightarrow>
+  step ms ps \<sigma> (pc ms t) t ms' ps' \<sigma>' \<Longrightarrow> 
+  preCond ms ps \<sigma> (pc ms t) t \<Longrightarrow> 
+  general_structure ms \<Longrightarrow>
+  allocated_addresses ms ps \<Longrightarrow>
+  psem_rules ps \<Longrightarrow>
+  own\<^sub>W_n_by_t_imp ms \<Longrightarrow>
+  observation_inv_ms ms \<Longrightarrow>
+  observation_inv_sig ms ps \<sigma> \<Longrightarrow>
+  observation_inv_ms ms'" 
+  apply(simp, safe; simp_all)
+  apply(simp add:observation_inv_ms_def step_def abbr)
+  apply(simp add:observation_inv_ms_def step_def abbr)
+  apply(case_tac "CTRsync\<^sub>1 ms t < T_max", simp_all add:abbr)
+  apply(case_tac "CTRsync\<^sub>1 ms t = t", simp_all add:abbr)
+  apply(simp add:observation_inv_ms_def step_def abbr)
+  apply auto[1]
+  apply blast
+  apply blast
+  apply(simp add:observation_inv_ms_def step_def abbr)
+  apply(case_tac "CTRsync\<^sub>2 ms t < T_max", simp_all add:abbr)
+  apply(simp add:observation_inv_ms_def step_def abbr)
+  apply(case_tac "r ms t (CTRsync\<^sub>2 ms t) = 0", simp_all add:abbr)
+  apply(simp add:observation_inv_ms_def step_def abbr)
+  apply auto[1]
+  apply blast
+  apply blast
+  apply(simp add:observation_inv_ms_def step_def abbr)
+  by(case_tac "reg ms t = Suc 0", simp_all add:abbr)
+
+
+
+
+
+
+
+
+
+
