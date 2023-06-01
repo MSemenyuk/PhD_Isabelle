@@ -1,0 +1,678 @@
+theory OpSem_definite
+imports Main PSem OpSem_Proof_Rules
+begin 
+
+definition
+  "wfs_2 \<sigma> \<equiv>
+      wfs \<sigma> 
+   \<and> (\<forall> x. (\<exists> b. (x, b) \<in> writes \<sigma> \<and> (x, b) \<notin> covered \<sigma>))"
+
+
+
+
+lemma initial_wfs_2: assumes "initial_state \<sigma> I"  shows "wfs_2 \<sigma>"
+  apply(simp add:wfs_2_def)
+  apply(rule conjI)
+  using assms initial_wfs apply blast
+  using assms apply (simp add: initial_state_def)
+  by blast
+
+lemma wfs_2_preserved:
+  assumes "wfs_2 \<sigma>"
+      and "OpSem.step t a \<sigma> \<sigma>'"
+    shows "wfs_2 \<sigma>'"
+  using assms apply(unfold wfs_2_def)
+  apply (intro conjI)
+  using wfs_preserved assms apply blast
+  apply (rule step_cases[OF assms(2)]) apply simp_all
+  using assms(1) wfs_2_def wfs_def apply auto[1]
+  apply (simp add: read_trans_def lastWr_def covered_v_def Let_def rev_app_def OpSem.step_def update_thrView_def split:if_splits)
+  using assms(1)  apply auto[1]
+  apply (unfold writes_on_def wfs_2_def wfs_def)
+  apply (simp add: var_def update_mods_def update_modView_def  )
+  apply (simp add: write_trans_def valid_fresh_ts_def lastWr_def covered_v_def Let_def rev_app_def step_def update_thrView_def split:if_splits)
+  apply (simp add: visible_writes_def update_mods_def update_modView_def )
+  apply safe
+  apply (simp add: fst_def tst_def snd_def)
+  apply(case_tac "thrView \<sigma> t x", simp_all add:update_trans_def Let_def rev_app_def) 
+  apply(case_tac "releasing \<sigma> (aaa, ba)", simp_all)
+  apply (metis assms(1) case_prod_conv less_irrefl subset_iff wfs_2_def wfs_def)
+  by (metis assms(1) case_prod_conv less_irrefl subset_iff wfs_2_def wfs_def)
+
+
+lemma lastNotCovered:
+"wfs \<sigma> \<Longrightarrow> lastWr \<sigma> x \<notin> covered \<sigma>  
+ \<Longrightarrow> (\<exists> b. (x, b) \<notin> covered \<sigma> \<and> lastWr \<sigma> x \<in> writes_on \<sigma> x) "
+  apply (simp add: lastWr_def)
+  apply (unfold writes_on_def)
+  by (metis lastWr_def last_write_write_on writes_on_def)
+
+
+
+
+
+(*\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>!All the writes_on C \<sigma> are Releasing \<sigma>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>\<And>!*)
+definition "These_writes_releasing \<sigma> x \<equiv>
+      \<forall>w. w\<in>writes_on \<sigma> x \<longrightarrow> releasing \<sigma> w"
+
+
+definition "FAAZ t w \<sigma> ts' \<equiv> 
+        (update_trans t w (value \<sigma> w) \<sigma> ts', value \<sigma> w)"
+(*Update x v v' \<Rightarrow> \<exists> ts'.
+           v = value \<sigma> w \<and> 
+           w \<notin> covered \<sigma> \<and>
+           valid_fresh_ts \<sigma> w ts' \<and>
+           \<sigma>' = update_trans t w v' \<sigma> ts'*)
+
+lemma Joining_These_writes_with:
+  assumes "These_writes_releasing \<sigma> x"
+  and "w \<in> writes_on \<sigma> x"
+shows "releasing \<sigma> w"
+  using assms apply(simp add:These_writes_releasing_def releasing_def)
+  by (metis surj_pair)
+
+lemma If_visible_then_releasing:
+  assumes "These_writes_releasing \<sigma> x"
+  and "w \<in> visible_writes \<sigma> t x"
+shows "releasing \<sigma> w"
+  using assms apply(simp add:These_writes_releasing_def wfs_2_def covered_v_def releasing_def)
+  by (metis (mono_tags, lifting) mem_Collect_eq surjective_pairing visible_writes_def)
+
+
+lemma CAS_succ_is_RMW_R:
+  assumes "\<exists> w ts'. w \<in> visible_writes \<sigma> t x \<and>
+                    w \<notin> covered \<sigma> \<and>
+                    valid_fresh_ts \<sigma> w ts' \<and> 
+                    \<sigma>' = fst(CAS t w u u \<sigma> ts')"
+  and "cvd[x,u] \<sigma>"
+  and "wfs_2 \<sigma>"
+shows "\<sigma> RMW\<^sup>R[x,u,u]\<^sub>t \<sigma>'"
+  using assms apply simp
+  apply(simp add:CAS_def step_def wfs_2_def)
+  apply(simp add:update_trans_def Let_def rev_app_def)
+  apply(simp add:visible_writes_def)
+  apply(simp add:update_modView_def update_thrView_def update_mods_def add_cv_def)
+  apply clarify
+  apply (simp add:fst_def update_trans_def Let_def rev_app_def add_cv_def)
+  apply(simp add:update_modView_def update_thrView_def update_mods_def add_cv_def)
+  apply(case_tac "releasing \<sigma> (a, b)", simp_all add:covered_v_def)
+  prefer 2 
+  apply blast
+  by blast
+
+
+lemma FAAZ_is_RMW_R:
+  assumes "\<exists> w ts'. w \<in> visible_writes \<sigma> t x \<and>
+                    w \<notin> covered \<sigma> \<and>
+                    valid_fresh_ts \<sigma> w ts' \<and> 
+                    \<sigma>' = fst(FAAZ t w \<sigma> ts')"
+  and "cvd[x,u] \<sigma>"
+  and "wfs_2 \<sigma>"
+shows "\<sigma> RMW\<^sup>R[x,u,u]\<^sub>t \<sigma>'"
+  using assms apply simp
+  apply(simp add:FAAZ_def step_def wfs_2_def)
+  apply(simp add:update_trans_def Let_def rev_app_def)
+  apply(simp add:visible_writes_def)
+  apply(simp add:update_modView_def update_thrView_def update_mods_def add_cv_def)
+  apply clarify
+  apply (simp add:fst_def update_trans_def Let_def rev_app_def add_cv_def covered_v_def)
+  apply(case_tac "releasing \<sigma> (a, b)", simp_all)
+  prefer 2 
+  apply blast 
+  by blast
+
+
+lemma x_has_lastWr:
+  assumes "wfs_2 \<sigma>"
+  and "cvd[x,u] \<sigma>"
+shows "\<exists>w. lastWr \<sigma> x = w \<and> value \<sigma> w = u"
+  apply clarsimp using assms apply(simp add:wfs_2_def)
+  by (metis covered_v_def fst_conv var_def wfs_def)
+
+lemma testtttttt:
+  assumes "cvd[x, u] \<sigma>"
+  and "cvd[x, z] \<sigma>"
+  and "wfs_2 \<sigma>"
+  and "z\<noteq>u"
+shows "False"  using assms apply(simp add:covered_v_def lastWr_def wfs_2_def) 
+  unfolding writes_on_def wfs_def apply clarify
+  by auto
+
+
+
+lemma cvd_pres_by_FAAZ:
+  assumes "\<sigma> RMW\<^sup>R[x,u,u]\<^sub>t \<sigma>'"
+  and "cvd[x,u] \<sigma>"
+  and "wfs_2 \<sigma>"
+shows "cvd[x,u] \<sigma>'"
+  using assms apply(simp add:covered_v_def lastWr_def wfs_2_def) 
+  apply(simp add:FAAZ_def step_def wfs_2_def)
+  apply(simp add:update_trans_def Let_def rev_app_def)
+  apply(simp add:visible_writes_def)
+  apply(simp add:update_modView_def update_thrView_def update_mods_def add_cv_def)
+  apply clarify
+  unfolding writes_on_def
+  by (metis assms(1) assms(2) covered_v_def cvd_RMW_new_cvd lastWr_def prod.inject writes_on_def)
+
+
+lemma cvd_pres_by_FAAZ_unfold:
+  assumes "\<exists> w ts'. w \<in> visible_writes \<sigma> t x \<and>
+                    w \<notin> covered \<sigma> \<and>
+                    valid_fresh_ts \<sigma> w ts' \<and> 
+                    \<sigma>' = fst(FAAZ t w \<sigma> ts')"
+  and "cvd[x,u] \<sigma>"
+  and "wfs_2 \<sigma>"
+shows "cvd[x,u] \<sigma>'"
+  using assms apply(subgoal_tac "\<sigma> RMW\<^sup>R[x,u,u]\<^sub>t \<sigma>'") prefer 2
+  using FAAZ_is_RMW_R apply blast
+  using cvd_pres_by_FAAZ by blast
+
+
+
+
+lemma cvd_changes_by_Succ_CAS:
+  assumes "\<sigma> RMW\<^sup>R[x,u,z]\<^sub>t \<sigma>'"
+  and "cvd[x,u] \<sigma>"
+  and "wfs_2 \<sigma>"
+shows "cvd[x,z] \<sigma>'"
+  using assms 
+  using cvd_RMW_new_cvd wfs_2_def by blast
+
+lemma cvd_pres_by_Fail_CAS_unfold:
+  assumes "\<sigma> [u \<leftarrow> x]\<^sub>t \<sigma>'"
+  and "cvd[x,u] \<sigma>"
+  and "wfs_2 \<sigma>"
+shows "cvd[x,u] \<sigma>'"
+  using assms
+  using cvd_Rdx_pres wfs_2_def by blast
+
+lemma cvd_pres_by_CAS_unfold_pt1:
+  assumes "
+       \<exists> w ts'. w \<in> visible_writes \<sigma> t x \<and>
+               w \<notin> covered \<sigma> \<and>
+               valid_fresh_ts \<sigma> w ts' \<and>
+       \<sigma>' = fst(CAS t w cv nv \<sigma> ts')
+  \<and> value \<sigma> w \<noteq> cv"
+  
+  and " cvd[x,u] \<sigma>"
+  and " wfs_2 \<sigma>"
+shows "cvd[x,u] \<sigma>'"
+  using assms apply(simp add:CAS_def step_def)
+  apply(simp add:read_trans_def rev_app_def update_thrView_def covered_v_def lastWr_def)
+  by clarsimp
+
+
+
+(*new*)
+(*definition "c_obs_last \<sigma> x u y v \<equiv> 
+                         value \<sigma> (lastWr \<sigma> x) = u \<longrightarrow> 
+                         d_obs \<sigma> (modView \<sigma> (lastWr \<sigma> x)) y v \<and>
+                         releasing \<sigma> (lastWr \<sigma> x)"*)
+
+abbreviation c_obs_last_abbr:: "nat \<Rightarrow> nat  \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> surrey_state \<Rightarrow> bool" ("[[_ = _]]\<lparr>_ = _ \<rparr> _" [100, 100, 100, 100, 100])
+  where "[[x = u]]\<lparr>y = v\<rparr> \<sigma> \<equiv> c_obs_last \<sigma> x u y v"
+
+
+
+
+
+
+(*NEW*)
+lemma c_obs_last_UP_intro: 
+  assumes "wfs_2 \<sigma>"
+  and "wr_val a = Some u"
+  and "avar a = x"
+  and "isUp a"
+  and "d_obs_t \<sigma> t y v"
+  and "cvd[x,z] \<sigma>" (*new*)
+  and "x \<noteq> y"  
+  and "step t a \<sigma> \<sigma>'"
+  and "releasing \<sigma> (lastWr \<sigma> x)" (*new*) (*make intro \<not>releasing *)
+shows "c_obs_last \<sigma>' x u y v"
+  using assms apply(case_tac "rd_val a = Some z")
+  apply (subgoal_tac "value \<sigma>' (lastWr \<sigma>' x) = u ") prefer 2
+  using covered_v_RMW_d_obs d_obs_def d_obs_t_def wfs_2_def apply blast
+  prefer 2
+  apply (metis isUp.elims(2) rd_val.simps(2) update_reads_cvd_v)
+  apply(simp add:c_obs_last_def)
+  apply(intro conjI impI)
+  prefer 2
+  apply(simp add:OpSem.step_def)
+  apply(case_tac "a", simp_all)
+  apply(simp add:update_trans_def wfs_2_def Let_def rev_app_def)
+  apply(simp add:releasing_def update_mods_def add_cv_def update_thrView_def) apply auto[1]
+  apply(simp add:update_modView_def covered_v_def)
+  apply(simp add:lastWr_def)
+  apply (smt (z3) assms(6) assms(8) cvd_RMW_d_obs d_obs_def d_obs_t_def fst_conv fun_upd_same insertI1 lastWr_def own_ModView surrey_state.select_convs(1) surrey_state.select_convs(2) surrey_state.select_convs(3) surrey_state.select_convs(4) surrey_state.surjective surrey_state.update_convs(1) surrey_state.update_convs(2) surrey_state.update_convs(3) surrey_state.update_convs(4) surrey_state.update_convs(5) var_def visible_var wfs_preserved write_record.ext_inject write_record.surjective)
+  apply(unfold OpSem.step_def)[1]
+  apply(case_tac "a")
+  using isUp.simps(1) apply blast
+  using isUp.simps(2) apply blast
+  apply clarsimp
+  apply(simp add:d_obs_def)
+  apply(intro conjI impI) prefer 2 
+  apply (metis assms(3) assms(8) d_obs_def d_obs_other d_obs_t_def wfs_2_def)
+  apply(simp add:update_trans_def Let_def rev_app_def)
+  apply(case_tac "releasing \<sigma> (aa, b)") prefer 2
+  using covered_v_def visible_writes_def apply fastforce
+  apply clarsimp
+  using covered_v_def 
+  apply(subgoal_tac "lastWr \<sigma> x = (aa,b)") prefer 2
+  using visible_writes_def apply fastforce
+  apply(simp add:update_mods_def update_modView_def update_thrView_def add_cv_def ts_oride_def)
+  apply(simp add:valid_fresh_ts_def)
+  apply clarify
+  apply(simp add:wfs_2_def covered_v_def d_obs_t_def d_obs_def)
+  apply clarify 
+  apply (unfold visible_writes_def releasing_def)
+  apply safe 
+proof -
+fix aa :: nat and b :: rat and ts' :: rat
+assume a1: "\<sigma>' = \<sigma> \<lparr>thrView := (thrView \<sigma>) (t := ts_oride ((thrView \<sigma> t)(aa := (aa, ts'))) (modView \<sigma> (aa, b))), modView := (modView \<sigma>) ((aa, ts') := ts_oride ((thrView \<sigma> t)(aa := (aa, ts'))) (modView \<sigma> (aa, b))), mods := (mods \<sigma>) ((aa, ts') := \<lparr>val = value \<sigma>' (lastWr \<sigma>' x), is_releasing = True\<rparr>), writes := insert (aa, ts') (surrey_state.writes \<sigma>), covered := insert (aa, b) (covered \<sigma>)\<rparr>"
+  assume a2: "wfs \<sigma>"
+  assume a3: "a = Update x (value \<sigma> (aa, b)) (value \<sigma>' (lastWr \<sigma>' x))"
+  assume "x \<noteq> y"
+  assume "v = value \<sigma> (lastWr \<sigma> y)"
+  assume "z = value \<sigma> (aa, b)"
+  assume a4: "(aa, b) \<in> writes_on \<sigma> x"
+  have f5: "\<forall>s f n na. d_obs (s::surrey_state) f n na = (f n = lastWr s n \<and> value s (lastWr s n) = na)"
+    using d_obs_def by blast
+  have f6: "\<lparr>surrey_state.writes = insert (aa, ts') (surrey_state.writes \<sigma>), thrView = (thrView \<sigma>) (t := ts_oride ((thrView \<sigma> t)(aa := (aa, ts'))) (modView \<sigma> (aa, b))), modView = (modView \<sigma>) ((aa, ts') := ts_oride ((thrView \<sigma> t)(aa := (aa, ts'))) (modView \<sigma> (aa, b))), mods = (mods \<sigma>) ((aa, ts') := \<lparr>val = value \<sigma>' (lastWr \<sigma>' x), is_releasing = True\<rparr>), covered = covered \<sigma>, \<dots> = surrey_state.more \<sigma>\<rparr> = \<sigma> \<lparr>thrView := (thrView \<sigma>) (t := ts_oride ((thrView \<sigma> t)(aa := (aa, ts'))) (modView \<sigma> (aa, b))), modView := (modView \<sigma>) ((aa, ts') := ts_oride ((thrView \<sigma> t)(aa := (aa, ts'))) (modView \<sigma> (aa, b))), mods := (mods \<sigma>) ((aa, ts') := \<lparr>val = value \<sigma>' (lastWr \<sigma>' x), is_releasing = True\<rparr>), writes := insert (aa, ts') (surrey_state.writes \<sigma>)\<rparr>"
+    by force
+  have f7: "aa = var (aa, ts')"
+    by auto
+  have "\<forall>p s n. p \<notin> writes_on (s::surrey_state) n \<or> var p = n"
+    using writes_on_var by blast
+  then have "var (aa, b) = x"
+    using a4 by blast
+  then have "aa = x"
+    by fastforce
+  then show "modView \<sigma>' (lastWr \<sigma>' x) y = lastWr \<sigma>' y"
+    using f7 f6 f5 a3 a2 a1 
+    by (smt (z3) assms(3) assms(5) assms(6) assms(8) cvd_RMW_d_obs d_obs_other d_obs_t_def fun_upd_same insertI1 own_ModView surrey_state.select_convs(1) surrey_state.select_convs(2) surrey_state.select_convs(3) surrey_state.update_convs(5) wfs_preserved) 
+  
+qed
+
+corollary c_obs_RMW_intro: 
+  "wfs_2 \<sigma> \<Longrightarrow> x \<noteq> y  \<Longrightarrow> [y =\<^sub>t v] \<sigma> \<Longrightarrow> cvd[x,z] \<sigma>
+   \<Longrightarrow> \<sigma> RMW[x, z, u]\<^sub>t \<sigma>' \<Longrightarrow> releasing \<sigma> (lastWr \<sigma> x)
+   \<Longrightarrow> [[x = u]]\<lparr>y = v\<rparr> \<sigma>'" 
+  using avar.simps(3) c_obs_last_UP_intro isUp.simps(3) wr_val.simps(2) by blast
+  
+
+
+
+(* 
+  and "wr_val a = Some u"
+  and "avar a = x"
+  and "isRA a"
+  and "isUp a"
+  and "step t a \<sigma> \<sigma>'"
+*)
+
+
+
+
+
+
+
+(*NEW*)
+lemma c_obs_last_Wr_diff_pres: 
+  assumes "wfs_2 \<sigma>"
+  and "wr_val a = Some k"
+  and "avar a = z"
+  and "isWr a"
+  and "c_obs_last \<sigma> x u y v"
+  and "cvd[x,u] \<sigma>" 
+  and "x \<noteq> y" 
+  and "x \<noteq> z"
+  and "z \<noteq> y"
+  and "step t a \<sigma> \<sigma>'"
+shows "c_obs_last \<sigma>' x u y v"
+  apply(rule step_cases[OF assms(10)]) 
+  using assms apply simp_all 
+  apply (simp add:wfs_2_def c_obs_last_def) 
+  apply clarsimp
+  apply (case_tac "aa \<noteq> z") 
+  apply (metis fst_conv var_def visible_var)
+  by clarsimp
+  
+
+corollary c_obs_last_WrX_diff_pres: 
+  "wfs_2 \<sigma> \<Longrightarrow>  cvd[x,u] \<sigma> \<Longrightarrow> x \<noteq> y \<Longrightarrow> z\<noteq>y \<Longrightarrow> x\<noteq>z
+    \<Longrightarrow> [[x = u]]\<lparr>y = v\<rparr> \<sigma> 
+    \<Longrightarrow> \<sigma> [z := k]\<^sub>t \<sigma>' 
+    \<Longrightarrow> [[x = u]]\<lparr>y = v\<rparr> \<sigma>'"
+  using c_obs_last_Wr_diff_pres 
+  by (metis WrX_def avar.simps(2) isWr.simps(2) wr_val.simps(1))
+  
+
+corollary c_obs_last_WrR_diff_pres: 
+  "wfs_2 \<sigma> \<Longrightarrow>  cvd[x,u] \<sigma> \<Longrightarrow> x \<noteq> y \<Longrightarrow> z\<noteq>y \<Longrightarrow> x\<noteq>z
+    \<Longrightarrow> [[x = u]]\<lparr>y = v\<rparr> \<sigma> 
+    \<Longrightarrow> \<sigma> [z :=\<^sup>R k]\<^sub>t \<sigma>' 
+    \<Longrightarrow> [[x = u]]\<lparr>y = v\<rparr> \<sigma>'"
+  using c_obs_last_Wr_diff_pres 
+  by (metis WrR_def avar.simps(2) isWr.simps(2) wr_val.simps(1))
+  
+
+
+(*NEW*)
+lemma c_obs_last_Up_d_obs:
+  assumes "wfs_2 \<sigma>" (*new*)
+  and "isUp a"
+  and "rd_val a = Some u"
+  and "avar a = x"
+  and "c_obs_last \<sigma> x u y v" (*new*)
+  and "step t a \<sigma> \<sigma>'"
+  and "x \<noteq> y"
+  and "cvd[x,u] \<sigma>"
+shows "d_obs_t \<sigma>' t y v"
+  apply(rule step_cases[OF assms(6)]) 
+  using assms(2) isUp.simps(1) apply blast
+  using assms(3) apply auto[1]
+  using assms(2,3,4,5,7)
+  apply clarsimp
+  apply(case_tac "aa \<noteq> x")
+  apply(simp add: visible_writes_def)
+  apply(unfold writes_on_def)
+  apply(elim conjE)
+  apply simp
+  apply(simp add: c_obs_last_def d_obs_t_def d_obs_def)
+  apply(intro conjI) prefer 2
+  apply(simp add:update_trans_def Let_def rev_app_def add_cv_def)
+  apply(case_tac "releasing \<sigma> (x, b)", simp_all)
+  apply(simp add:update_mods_def update_thrView_def update_modView_def)
+  apply auto[1]
+  using assms(1) assms(8) x_has_lastWr apply blast
+  apply (simp add: valid_fresh_ts_def)
+  apply(simp add: lastWr_def)
+  apply(unfold writes_on_def, simp, elim conjE)
+  apply(simp add: value_def)
+  apply (metis assms(1) assms(8) covered_v_def fst_conv in_mono var_def visible_writes_in_writes wfs_2_def wfs_def)
+  apply(simp add:update_trans_def Let_def rev_app_def add_cv_def)
+  apply(case_tac "releasing \<sigma> (x, b)", simp_all)
+  apply(simp add:update_mods_def update_thrView_def update_modView_def)
+  apply auto[1]
+  using assms(1) assms(8) x_has_lastWr apply blast
+  apply (smt (verit) assms(1) assms(8) covered_v_def fun_upd_apply insert_Diff insert_subset last_write_max ts_oride_def visible_var visible_writes_in_writes wfs_2_def wfs_def)
+  by (metis assms(1) assms(8) covered_v_def fst_eqD subsetD var_def visible_writes_in_writes wfs_2_def wfs_def)
+
+
+
+
+
+corollary c_obs_last_UpRA_d_obs:  
+  "wfs_2 \<sigma> \<Longrightarrow> cvd[x,u] \<sigma> \<Longrightarrow> x\<noteq>y \<Longrightarrow> [[x = u]]\<lparr>y = v\<rparr> \<sigma> \<Longrightarrow> \<sigma> RMW[x, u, z]\<^sub>t \<sigma>' \<Longrightarrow> [y =\<^sub>t v] \<sigma>'"
+  using wfs_2_def avar.simps(3) c_obs_last_Up_d_obs isUp.simps(3) rd_val.simps(2)
+  by blast
+ 
+
+
+
+
+
+
+
+(*NEW*)
+lemma c_obs_last_Rd_pres:
+  assumes "wfs_2 \<sigma>"
+  and "isRd a"
+  and "c_obs_last \<sigma> x u y v"
+  and "step t' a \<sigma> \<sigma>'"
+  and "x \<noteq> y"
+  and "\<not>isRA a"
+shows "c_obs_last \<sigma>' x u y v"
+  apply(rule step_cases[OF assms(4)]) 
+  defer
+  using assms(2) apply auto[2] 
+  using assms(1,2,3,5,6)
+  apply(elim conjE)
+  apply(simp add: c_obs_last_def d_obs_def visible_writes_def)
+  apply(unfold writes_on_def, clarsimp)
+  apply(intro conjI)
+    apply(simp add: read_trans_def rev_app_def Let_def update_modView_def update_thrView_def)
+  apply (smt action.simps(10) assms(4) lastWr_read_pres step_def)
+   apply (simp add: lastWr_read_pres) 
+  apply(simp add: releasing_def) 
+  by (simp add: lastWr_read_pres)
+
+
+corollary c_obs_last_RdX_pres:
+  "wfs_2 \<sigma> \<Longrightarrow>  x \<noteq> y 
+         \<Longrightarrow> [[x=u]]\<lparr>y=v\<rparr> \<sigma> \<Longrightarrow> \<sigma> [k \<leftarrow> z]\<^sub>t' \<sigma>'
+         \<Longrightarrow> [[x=u]]\<lparr>y=v\<rparr> \<sigma>'" 
+  by (metis (full_types) RdX_def c_obs_last_Rd_pres isRA.simps(1) isRd.simps(1))
+  
+
+
+lemma c_obs_last_skip_pres:
+  "wfs_2 \<sigma> \<Longrightarrow>  x \<noteq> y 
+         \<Longrightarrow> [[x=u]]\<lparr>y=v\<rparr> \<sigma> \<Longrightarrow> \<sigma> = \<sigma>'
+         \<Longrightarrow> [[x=u]]\<lparr>y=v\<rparr> \<sigma>'" 
+  by blast
+
+
+
+
+
+
+
+
+
+
+(*going by the sheet covering all step/condition pairs*)
+
+
+lemma val_last_Up_pres:
+  assumes "wfs_2 \<sigma>"
+    and "cvd[x,u] \<sigma>"
+    and "isUp a"
+    and "avar a = x" 
+    and "wr_val a = Some u'"
+    and "rd_val a = Some u"
+    and "step t a \<sigma> \<sigma>'"
+  shows "(value \<sigma>' (lastWr \<sigma>' x)) = u'"
+  using assms apply (simp_all add: step_def)
+  apply(case_tac "a", simp_all) apply clarsimp
+  apply(simp add:update_trans_def Let_def rev_app_def)
+  apply(case_tac "releasing \<sigma> (aa, b)", simp_all) prefer 2
+  using assms(7) cvd_RMW_d_obs d_obs_def d_obs_t_def wfs_2_def apply blast
+  using assms(7) cvd_RMW_d_obs d_obs_def d_obs_t_def wfs_2_def by blast
+
+
+lemma val_last_Wr_diff_pres:
+  assumes "wfs_2 \<sigma>"
+    and "cvd[x,u] \<sigma>"
+    and "isWr a"
+    and "avar a \<noteq> x" 
+    and "wr_val a = Some k"
+    and "step t a \<sigma> \<sigma>'"
+  shows "(value \<sigma>' (lastWr \<sigma>' x)) = u"
+  using assms apply (simp add:step_def) 
+  apply(case_tac "a", simp_all) apply clarify
+  apply(simp add:wfs_2_def covered_v_def)
+  by (metis assms(2) assms(6) avar.simps(2) covered_diff_var_pres covered_v_def fst_conv isUp.simps(2) not_cvd_pres var_def wfs_def)
+
+
+
+
+
+
+
+
+
+
+lemma c_obs_last_Up_same_loc_pres:
+  assumes "wfs_2 \<sigma>"
+  and "wr_val a = Some u"
+  and "rd_val a = Some u"
+  and "cvd[x,u] \<sigma>" (*new*)
+  and "avar a = x"
+  and "isUp a"
+  and "isRA a"
+  and "x \<noteq> y"
+  and "c_obs_last \<sigma> x u y v"
+  and "step t a \<sigma> \<sigma>'"
+  and "releasing \<sigma> (lastWr \<sigma> x)"
+shows "c_obs_last \<sigma>' x u y v"
+  using assms apply (simp add:c_obs_last_def step_def)
+  apply safe prefer 2 
+  apply (meson x_has_lastWr)
+  prefer 3
+  apply(case_tac "a", simp_all) prefer 2 
+  apply (meson x_has_lastWr)
+  prefer 2
+  apply(case_tac "a", simp_all) 
+  apply clarify
+  apply(subgoal_tac " \<sigma> RMW[x, u, u]\<^sub>t \<sigma>'")
+    apply(subgoal_tac "(modView \<sigma>' (lastWr \<sigma>' x)) = (thrView \<sigma>' t)") 
+  apply (metis assms(3) assms(5) assms(6) assms(9) c_obs_last_Up_d_obs d_obs_t_def)
+  prefer 2 
+  using assms(10) apply fastforce
+  prefer 2
+   apply(simp add:update_trans_def Let_def rev_app_def)  
+  apply(case_tac "releasing \<sigma> (aa, b)", simp_all) 
+  apply(simp add:update_mods_def update_modView_def add_cv_def update_thrView_def covered_v_def wfs_2_def)
+  prefer 2
+  using covered_v_def visible_writes_def apply fastforce prefer 2
+  apply(simp add:step_def update_trans_def Let_def rev_app_def)
+  apply(simp_all add:covered_v_def wfs_2_def)
+  apply clarify
+  apply(simp add:update_mods_def update_modView_def add_cv_def update_thrView_def covered_v_def wfs_2_def)
+  apply (smt (z3) assms(4) assms(10) cvd_RMW_d_obs d_obs_def d_obs_t_def fun_upd_same insertI1 own_ModView prod.sel(1) surrey_state.ext_inject surrey_state.surjective surrey_state.update_convs(1) surrey_state.update_convs(2) surrey_state.update_convs(3) surrey_state.update_convs(4) surrey_state.update_convs(5) var_def visible_var wfs_preserved)
+  (*SMT solved*) 
+  apply auto 
+  by (smt (z3) assms(4) assms(10) cvd_RMW_d_obs d_obs_def d_obs_t_def fst_conv fun_upd_same insertI1 own_ModView releasing_def surrey_state.select_convs(1) surrey_state.select_convs(2) surrey_state.select_convs(3) surrey_state.select_convs(4) surrey_state.surjective surrey_state.update_convs(1) surrey_state.update_convs(2) surrey_state.update_convs(3) surrey_state.update_convs(4) surrey_state.update_convs(5) var_def visible_var wfs_preserved write_record.ext_inject write_record.surjective)
+  
+
+corollary c_obs_last_Up_same_loc_pres_col:
+  "wfs_2 \<sigma> \<Longrightarrow>x \<noteq> y \<Longrightarrow> cvd[x,u] \<sigma> \<Longrightarrow> [[x = u]]\<lparr>y = v\<rparr> \<sigma> \<Longrightarrow> \<sigma> RMW\<^sup>R[x, u, u]\<^sub>t \<sigma>' \<Longrightarrow>
+releasing \<sigma> (lastWr \<sigma> x) \<Longrightarrow>
+    [[x = u]]\<lparr>y = v\<rparr> \<sigma>'"
+  apply (simp add:step_def) apply auto
+  using c_obs_last_Up_same_loc_pres [where \<sigma> = \<sigma> and u=u and x=x and \<sigma>'=\<sigma>' and y=y and v=v and t=t]
+  apply (simp add:covered_v_def)
+  apply(simp add:c_obs_last_def)
+  by (metis FAAZ_def FAAZ_is_RMW_R avar.simps(3) covered_v_def fst_conv isRA.simps(3) isUp.simps(3) old.prod.exhaust rd_val.simps(2) wr_val.simps(2))
+
+
+
+
+lemma c_obs_last_Up_same_loc_pres_global:
+  assumes "wfs_2 \<sigma>"
+  and "wr_val a = Some u"
+  and "rd_val a = Some u"
+  and "cvd[x,u] \<sigma>" (*new*)
+  and "avar a = x"
+  and "isUp a"
+  and "isRA a"
+  and "x \<noteq> y"
+  and "c_obs_last \<sigma> x u y v"
+  and "step t a \<sigma> \<sigma>'"
+  and "releasing \<sigma> (lastWr \<sigma> x)"
+shows "c_obs_last \<sigma>' x u y v"
+  using assms
+  by (metis avar.simps(3) c_obs_last_Up_same_loc_pres_col isUp.elims(2) option.inject rd_val.simps(2) wr_val.simps(2))
+
+
+
+corollary c_obs_last_Up_same_loc_pres_col_global:
+  "wfs_2 \<sigma> \<Longrightarrow>x \<noteq> y \<Longrightarrow> cvd[x,u] \<sigma> \<Longrightarrow> [[x = u]]\<lparr>y = v\<rparr> \<sigma> \<Longrightarrow> \<sigma> RMW\<^sup>R[x, u, u]\<^sub>t \<sigma>' \<Longrightarrow>
+releasing \<sigma> (lastWr \<sigma> x) \<Longrightarrow>
+    [[x = u]]\<lparr>y = v\<rparr> \<sigma>'"
+  using c_obs_last_Up_same_loc_pres_col by blast
+  
+
+(*overarching*)
+
+lemma FAAZ_pres_rule_1:
+  assumes "wfs_2 \<sigma>"
+  and "These_writes_releasing \<sigma> x" 
+  and "cvd[x,u] \<sigma>" (*new*)
+  and "wr_val a = Some u"
+  and "rd_val a = Some u"
+  and "avar a = x"
+  and "isUp a"
+  and "isRA a"
+  and "x \<noteq> y"
+  and "cvd[x,u] \<sigma> \<and> BOOLEAN \<longrightarrow> c_obs_last \<sigma> x u y v"
+  and "step t a \<sigma> \<sigma>'"
+shows "cvd[x,u] \<sigma>' \<and> BOOLEAN \<longrightarrow> c_obs_last \<sigma>' x u y v" 
+  using assms(1) assms(10) assms(11) assms(3) assms(4) assms(5) assms(6) assms(7) assms(8) assms(9) c_obs_last_Up_same_loc_pres_global c_obs_last_def x_has_lastWr by fastforce
+
+
+lemma FAAZ_pres_rule_2:
+  assumes "wfs_2 \<sigma>"
+  and "These_writes_releasing \<sigma> x" 
+  and "cvd[x,u] \<sigma>" (*new*)
+  and "wr_val a = Some u"
+  and "rd_val a = Some u"
+  and "avar a = x"
+  and "isUp a"
+  and "isRA a"
+  and "x \<noteq> y"
+  and "cvd[x,u] \<sigma> \<and> BOOLEAN \<longrightarrow> c_obs_last \<sigma> x u y v"
+  and "BOOL \<longrightarrow> [y=\<^sub>t v] \<sigma>"
+  and "step t a \<sigma> \<sigma>'"
+shows "BOOL \<longrightarrow> [y=\<^sub>t v] \<sigma>'" 
+  using assms(1) assms(11) assms(12) assms(6) assms(9) d_obs_other wfs_2_def by blast
+
+
+lemma FAAZ_pres_rule_3:
+  assumes "wfs_2 \<sigma>"
+  and "These_writes_releasing \<sigma> x"
+  and "cvd[x,u] \<sigma>" (*new*)
+  and "wr_val a = Some u"
+  and "rd_val a = Some u"
+  and "avar a = x"
+  and "isUp a"
+  and "isRA a"
+  and "x \<noteq> y"
+  and "cvd[x,u] \<sigma> \<and> BOOLEAN \<longrightarrow> c_obs_last \<sigma> x u y v"
+  and "[z=\<^sub>t k] \<sigma>"
+  and "z\<noteq>x"
+  and "z\<noteq>y"
+  and "step t a \<sigma> \<sigma>'"
+shows "[z=\<^sub>t k] \<sigma>'" 
+  by (metis assms(1) assms(11) assms(12) assms(14) assms(6) d_obs_other wfs_2_def)
+  
+
+
+
+
+lemma Weak_Read_pres_covered:
+  assumes "wfs_2 \<sigma>"
+  and "cvd[x,u] \<sigma>" (*new*)
+  and "wr_val a = Some z"
+  and "rd_val a = Some z"
+  and "avar a = w"
+  and "x \<noteq> y"
+  and "\<sigma> [k \<leftarrow> z]\<^sub>t' \<sigma>'"
+  and "z\<noteq>x"
+  and "z\<noteq>y"
+  and "step t a \<sigma> \<sigma>'"
+shows "cvd[x,u] \<sigma>'" 
+  using assms 
+  using cvd_Rdx_pres wfs_2_def by blast
+  
+
+
+lemma Weak_Read_pres_c_obs_definite:
+  assumes "wfs_2 \<sigma>"
+  and "[[x = u]]\<lparr> y = 1 \<rparr> \<sigma>"
+  and "\<sigma> [u \<leftarrow> x]\<^sub>t \<sigma>'"
+  and "y\<noteq>x"
+  and "cvd[x,u] \<sigma>"
+  and "releasing \<sigma> (lastWr \<sigma> x)"
+shows "[[x = u]]\<lparr> y = 1 \<rparr> \<sigma>'"
+  using assms apply simp 
+  by (metis c_obs_last_RdX_pres)
+
+
+
+
+
+end
+
+
